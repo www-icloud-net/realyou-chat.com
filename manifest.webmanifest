@@ -1,0 +1,20 @@
+{
+  "name": "RealYou Chat",
+  "short_name": "RealYou",
+  "description": "Fast realtime family chat for messages, calls, media, safety, and shared family tools.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#25d366",
+  "orientation": "any",
+  "categories": ["communication", "social", "productivity"],
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
