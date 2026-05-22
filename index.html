@@ -906,6 +906,10 @@
       width: min(760px, 100%);
     }
 
+    .call-modal.video-call-active {
+      width: min(980px, 100%);
+    }
+
     .call-stage {
       position: relative;
       min-height: 340px;
@@ -946,6 +950,17 @@
     .call-controls .btn {
       min-width: 104px;
       border-radius: 999px;
+    }
+
+    .mobile-logout-btn {
+      display: none;
+    }
+
+    .account-danger {
+      display: grid;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
     }
 
     .message-input {
@@ -1043,6 +1058,10 @@
       background: rgba(2, 5, 14, .62);
       backdrop-filter: blur(16px);
       animation: fadeIn .2s ease both;
+    }
+
+    .modal-backdrop.call-fullscreen-backdrop {
+      padding: 0;
     }
 
     .modal {
@@ -2563,6 +2582,36 @@
         padding: 18px;
       }
 
+      .call-modal.video-call-active {
+        width: 100vw;
+        height: 100dvh;
+        max-height: none;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto auto;
+        border: 0;
+        border-radius: 0;
+        padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+      }
+
+      .call-modal.video-call-active .call-stage {
+        min-height: 0;
+        height: 100%;
+        border-radius: 18px;
+      }
+
+      .call-modal.video-call-active #remoteVideo {
+        min-height: 0;
+        height: 100%;
+      }
+
+      .call-modal.video-call-active #localVideo {
+        width: 112px;
+        height: 84px;
+        right: 10px;
+        bottom: 10px;
+        border-radius: 13px;
+      }
+
       .request-bar,
       .family-row {
         grid-template-columns: 1fr;
@@ -2711,7 +2760,25 @@
       }
 
       #appScreen .sidebar-bottom {
+        grid-template-columns: minmax(0, 1fr) 52px;
+        align-items: center;
         padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+      }
+
+      #appScreen .mobile-logout-btn {
+        display: inline-flex;
+        width: 52px;
+        min-width: 52px;
+        height: 46px;
+        padding: 0;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #ff4d5f, #c62535);
+        color: #fff;
+        box-shadow: 0 14px 28px rgba(198,37,53,.22);
+      }
+
+      #appScreen .mobile-logout-btn .mobile-logout-text {
+        display: none;
       }
 
       #appScreen .chat-header {
@@ -2923,6 +2990,9 @@
 
       <div class="sidebar-bottom">
         <button id="createGroupBtn" class="btn primary full" type="button">Create group</button>
+        <button id="mobileLogoutBtn" class="btn mobile-logout-btn" type="button" title="Log out" aria-label="Log out">
+          <span data-icon="log-out"></span><span class="mobile-logout-text">Log out</span>
+        </button>
       </div>
     </aside>
 
@@ -3236,6 +3306,9 @@
         <div class="settings-actions">
           <button id="lockNowBtn" class="btn" type="button">Lock now</button>
           <button id="backupNowBtn" class="btn" type="button">Backup</button>
+        </div>
+        <div class="account-danger">
+          <button id="deleteAccountBtn" class="btn danger full" type="button">Delete account</button>
         </div>
       </form>
     </section>
@@ -3563,7 +3636,10 @@
       listReloadTimer: null,
       conversationRenderFrame: null,
       messageRenderFrame: null,
+      messageLoadRequest: 0,
       shouldScrollAfterMessageRender: false,
+      appHistoryReady: false,
+      appView: 'list',
       mediaRecorder: null,
       recordingStream: null,
       audioChunks: [],
@@ -3578,6 +3654,8 @@
       callCameraOff: false,
       availableVideoInputs: [],
       currentVideoDeviceIndex: 0,
+      currentVideoDeviceId: null,
+      currentFacingMode: 'user',
       offlineOutbox: [],
       syncingOutbox: false,
       familyCircles: [],
@@ -3693,9 +3771,11 @@
       $('resetResendCodeBtn').addEventListener('click', () => requestResetCode({ resend: true }));
       $('logoutBtn').addEventListener('click', signOut);
       $('railLogoutBtn').addEventListener('click', signOut);
+      $('mobileLogoutBtn').addEventListener('click', signOut);
       $('settingsBtn').addEventListener('click', openSettingsModal);
       $('settingsForm').addEventListener('submit', saveChatSettings);
       $('settingsResetBtn').addEventListener('click', resetChatSettings);
+      $('deleteAccountBtn').addEventListener('click', deleteOwnAccount);
       $('lockNowBtn').addEventListener('click', () => {
         closeModals();
         lockApp();
@@ -3784,9 +3864,16 @@
         await loadConversations();
         if (state.currentConversation) await selectConversation(state.currentConversation.conversation_id, { keepSidebar: true });
       });
-      $('mobileMenuBtn').addEventListener('click', () => setSidebarOpen(!$('sidebar').classList.contains('open')));
+      $('mobileMenuBtn').addEventListener('click', () => {
+        const open = !$('sidebar').classList.contains('open');
+        setSidebarOpen(open);
+        if (open) pushAppView('list');
+        else if (state.currentConversation) pushAppView('chat', { conversationId: state.currentConversation.conversation_id });
+      });
       $('drawerScrim').addEventListener('click', () => setSidebarOpen(false));
       window.addEventListener('resize', debounce(handleViewportLayout, 160));
+      window.addEventListener('popstate', handleAppPopState);
+      window.addEventListener('beforeunload', handleBeforeUnload);
       $('modalBackdrop').addEventListener('click', (event) => {
         if (event.target.id === 'modalBackdrop') {
           if (state.activeCall) endCall();
@@ -4140,8 +4227,15 @@
     }
 
     async function signOut() {
-      await cleanupApp();
-      await sb.auth.signOut();
+      try {
+        await cleanupApp();
+        const { error } = await sb.auth.signOut();
+        if (error) throw error;
+      } catch (error) {
+        toast(readableError(error), 'error');
+      } finally {
+        showAuth();
+      }
     }
 
     async function cleanupApp() {
@@ -4160,6 +4254,9 @@
       state.replyTo = null;
       state.selectedMessageId = null;
       state.appLocked = false;
+      state.messageLoadRequest += 1;
+      state.appHistoryReady = false;
+      state.appView = 'list';
       clearTimeout(state.lockTimer);
       clearTimeout(state.logoutTimer);
       cancelAnimationFrame(state.conversationRenderFrame);
@@ -4432,31 +4529,38 @@
     async function selectConversation(conversationId, options = {}) {
       const conversation = state.conversations.find((item) => item.conversation_id === conversationId);
       if (!conversation) return;
+      const loadRequest = state.messageLoadRequest + 1;
+      state.messageLoadRequest = loadRequest;
       state.currentConversation = conversation;
       $('emptyHome').classList.add('hidden');
       $('chatHeader').classList.remove('hidden');
       $('messagesWrap').classList.remove('hidden');
       $('composer').classList.toggle('hidden', isPendingConversationRequest(conversation));
-      $('messageInput').focus();
+      $('messages').innerHTML = loadingMarkup('Loading messages');
       renderConversations();
       renderChatHeader();
       renderMessageRequestBar();
-      await loadMessages(conversationId);
+      if (!options.keepSidebar) setSidebarOpen(false);
+      pushAppView('chat', { conversationId });
+      requestAnimationFrame(() => $('messageInput').focus());
+      await loadMessages(conversationId, loadRequest);
+      if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
       subscribeMessages(conversationId);
       subscribeTyping(conversationId);
       subscribeCalls(conversationId);
       await markRead(conversationId);
       scheduleConversationReload();
-      if (!options.keepSidebar) setSidebarOpen(false);
     }
 
-    async function loadMessages(conversationId) {
-      $('messages').innerHTML = loadingMarkup('Loading messages');
+    async function loadMessages(conversationId, loadRequest = state.messageLoadRequest) {
+      if (loadRequest === state.messageLoadRequest) $('messages').innerHTML = loadingMarkup('Loading messages');
       const { data, error } = await sb.from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
         .limit(50);
+
+      if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
 
       if (error) {
         $('messages').innerHTML = emptyMarkup('Messages unavailable', readableError(error));
@@ -4470,7 +4574,9 @@
       });
       mergePendingMessages(conversationId);
       await loadProfilesForIds(state.messages.map((message) => message.sender_id));
+      if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
       await loadMessageExtras();
+      if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
       scheduleMessagesRender(true);
     }
 
@@ -4585,6 +4691,7 @@
         state.activeCall = { id: callId, kind, initiator: true };
         openModal('callModal');
         showActiveCallControls(kind);
+        requestCallFullscreen(kind);
         $('incomingCallActions').classList.add('hidden');
         $('callTitle').textContent = kind === 'video' ? 'Video call' : 'Audio call';
         $('callStatus').textContent = 'Calling...';
@@ -4636,6 +4743,7 @@
         state.activeCall = { id: offer.call_id, kind: offer.kind, initiator: false };
         stopRingtone();
         showActiveCallControls(offer.kind);
+        requestCallFullscreen(offer.kind);
         $('incomingCallActions').classList.add('hidden');
         $('callStatus').textContent = 'Connecting...';
         await state.peerConnection.setRemoteDescription(new RTCSessionDescription(offer.sdp));
@@ -4660,13 +4768,24 @@
       state.callMuted = false;
       state.callCameraOff = false;
       state.availableVideoInputs = [];
-      state.localStream = await navigator.mediaDevices.getUserMedia({
+      state.currentVideoDeviceId = null;
+      const constraints = {
         audio: true,
-        video: kind === 'video'
-      });
+        video: kind === 'video' ? { facingMode: state.currentFacingMode || 'user' } : false
+      };
+      try {
+        state.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
+        if (kind !== 'video') throw error;
+        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      }
       if (kind === 'video' && navigator.mediaDevices?.enumerateDevices) {
         const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
         state.availableVideoInputs = devices.filter((device) => device.kind === 'videoinput');
+        const currentDeviceId = state.localStream.getVideoTracks()[0]?.getSettings?.().deviceId || null;
+        state.currentVideoDeviceId = currentDeviceId;
+        const currentIndex = state.availableVideoInputs.findIndex((device) => device.deviceId === currentDeviceId);
+        state.currentVideoDeviceIndex = currentIndex >= 0 ? currentIndex : 0;
       }
       $('localVideo').srcObject = state.localStream;
       $('remoteVideo').classList.toggle('hidden', kind !== 'video');
@@ -4701,6 +4820,9 @@
       $('remoteAudio').srcObject = null;
       $('incomingCallActions').classList.add('hidden');
       $('activeCallControls').classList.add('hidden');
+      $('callModal').classList.remove('video-call-active');
+      $('modalBackdrop').classList.remove('call-fullscreen-backdrop');
+      if (document.fullscreenElement === $('callModal')) document.exitFullscreen().catch(() => {});
       closeModals();
     }
 
@@ -4715,10 +4837,18 @@
 
     function showActiveCallControls(kind) {
       $('activeCallControls').classList.remove('hidden');
+      $('callModal').classList.toggle('video-call-active', kind === 'video');
+      $('modalBackdrop').classList.toggle('call-fullscreen-backdrop', kind === 'video');
       $('toggleCameraBtn').classList.toggle('hidden', kind !== 'video');
       $('switchCameraBtn').classList.toggle('hidden', kind !== 'video');
+      $('speakerBtn').classList.toggle('hidden', !canSelectSpeakerOutput());
       $('muteCallBtn').textContent = 'Mute';
       $('toggleCameraBtn').textContent = 'Camera off';
+    }
+
+    function requestCallFullscreen(kind) {
+      if (kind !== 'video' || !$('callModal').requestFullscreen || document.fullscreenElement) return;
+      $('callModal').requestFullscreen().catch(() => {});
     }
 
     function toggleCallMute() {
@@ -4738,28 +4868,51 @@
     }
 
     async function switchCallCamera() {
-      if (!state.localStream || !state.peerConnection || !state.availableVideoInputs.length) {
+      if (!state.localStream || !state.peerConnection) {
         toast('No alternate camera is available.', 'error');
         return;
       }
-      state.currentVideoDeviceIndex = (state.currentVideoDeviceIndex + 1) % state.availableVideoInputs.length;
-      const nextDevice = state.availableVideoInputs[state.currentVideoDeviceIndex];
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { deviceId: { exact: nextDevice.deviceId } }
-      });
-      const newTrack = newStream.getVideoTracks()[0];
-      const sender = state.peerConnection.getSenders().find((item) => item.track?.kind === 'video');
-      if (sender && newTrack) await sender.replaceTrack(newTrack);
-      state.localStream.getVideoTracks().forEach((track) => track.stop());
-      state.localStream.addTrack(newTrack);
-      $('localVideo').srcObject = state.localStream;
+      try {
+        let videoConstraint;
+        if (state.availableVideoInputs.length > 1) {
+          state.currentVideoDeviceIndex = (state.currentVideoDeviceIndex + 1) % state.availableVideoInputs.length;
+          const nextDevice = state.availableVideoInputs[state.currentVideoDeviceIndex];
+          state.currentVideoDeviceId = nextDevice.deviceId;
+          videoConstraint = { deviceId: { exact: nextDevice.deviceId } };
+        } else {
+          state.currentFacingMode = state.currentFacingMode === 'environment' ? 'user' : 'environment';
+          videoConstraint = { facingMode: { exact: state.currentFacingMode } };
+        }
+
+        let newStream;
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraint });
+        } catch (error) {
+          if (!videoConstraint.facingMode) throw error;
+          newStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: state.currentFacingMode } });
+        }
+
+        const newTrack = newStream.getVideoTracks()[0];
+        if (!newTrack) throw new Error('No alternate camera is available.');
+        const sender = state.peerConnection.getSenders().find((item) => item.track?.kind === 'video');
+        if (sender) await sender.replaceTrack(newTrack);
+        state.localStream.getVideoTracks().forEach((track) => {
+          state.localStream.removeTrack(track);
+          track.stop();
+        });
+        state.localStream.addTrack(newTrack);
+        state.currentVideoDeviceId = newTrack.getSettings?.().deviceId || state.currentVideoDeviceId;
+        $('localVideo').srcObject = state.localStream;
+      } catch (error) {
+        toast(readableError(error), 'error');
+      }
     }
 
     async function chooseCallSpeaker() {
       const audio = $('remoteAudio');
-      if (!audio?.setSinkId || !navigator.mediaDevices?.selectAudioOutput) {
-        toast('Speaker selection is not supported in this browser.', 'error');
+      if (!canSelectSpeakerOutput()) {
+        audio.muted = false;
+        audio.volume = 1;
         return;
       }
       try {
@@ -4769,6 +4922,10 @@
       } catch (error) {
         if (error?.name !== 'AbortError') toast(readableError(error), 'error');
       }
+    }
+
+    function canSelectSpeakerOutput() {
+      return Boolean($('remoteAudio')?.setSinkId && navigator.mediaDevices?.selectAudioOutput);
     }
 
     function startRingtone() {
@@ -5614,6 +5771,33 @@
       scheduleSecurityTimers();
       openSettingsModal();
       toast('Settings reset');
+    }
+
+    async function deleteOwnAccount() {
+      if (!state.user) return;
+      const confirmed = confirm('Permanently delete this account? This cannot be undone.');
+      if (!confirmed) return;
+      const typed = prompt('Type DELETE to confirm permanent account deletion.');
+      if (typed !== 'DELETE') return;
+
+      const button = $('deleteAccountBtn');
+      button.disabled = true;
+      button.textContent = 'Deleting...';
+      try {
+        const { error } = await sb.rpc('delete_my_account');
+        if (error) throw error;
+        localStorage.removeItem(settingsStorageKey());
+        await cleanupApp();
+        await sb.auth.signOut().catch(() => {});
+        closeModals();
+        showAuth();
+        toast('Account deleted');
+      } catch (error) {
+        toast(readableError(error), 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Delete account';
+      }
     }
 
     async function sha256(value) {
@@ -6833,6 +7017,7 @@
 
     function closeModals() {
       $('modalBackdrop').classList.add('hidden');
+      $('modalBackdrop').classList.remove('call-fullscreen-backdrop');
       $('signupModal').classList.add('hidden');
       $('resetPasswordModal').classList.add('hidden');
       $('profileModal').classList.add('hidden');
@@ -6843,6 +7028,7 @@
       $('chatInfoModal').classList.add('hidden');
       $('groupModal').classList.add('hidden');
       $('callModal').classList.add('hidden');
+      $('callModal').classList.remove('video-call-active');
       $('pollModal').classList.add('hidden');
       $('eventModal').classList.add('hidden');
     }
@@ -6852,6 +7038,7 @@
       $('sidebar').classList.toggle('open', shouldOpen);
       $('drawerScrim').classList.toggle('hidden', !shouldOpen || isMobileLayout());
       $('mobileMenuBtn').setAttribute('aria-expanded', String(shouldOpen));
+      state.appView = shouldOpen ? 'list' : (state.currentConversation ? 'chat' : 'list');
     }
 
     function isMobileLayout() {
@@ -6864,7 +7051,76 @@
         setSidebarOpen(false);
         return;
       }
+      initAppHistory();
       if (!state.currentConversation) setSidebarOpen(true);
+    }
+
+    function initAppHistory() {
+      if (!isMobileLayout()) return;
+      if (state.appHistoryReady || !history?.pushState) return;
+      try {
+        history.replaceState({ realyou: true, view: 'root' }, document.title);
+        history.pushState({ realyou: true, view: 'list' }, document.title);
+        state.appHistoryReady = true;
+        state.appView = 'list';
+      } catch {}
+    }
+
+    function pushAppView(view, details = {}) {
+      if (!state.appHistoryReady || !isMobileLayout() || $('appScreen').classList.contains('hidden')) return;
+      const current = history.state || {};
+      const conversationId = details.conversationId || null;
+      if (current.realyou && current.view === view && (current.conversationId || null) === conversationId) return;
+      try {
+        history.pushState({ realyou: true, view, conversationId }, document.title);
+        state.appView = view;
+      } catch {}
+    }
+
+    function handleAppPopState(event) {
+      if ($('appScreen').classList.contains('hidden')) return;
+      if (!isMobileLayout()) return;
+
+      if (!$('modalBackdrop').classList.contains('hidden')) {
+        closeModals();
+      }
+
+      const view = event.state?.realyou ? event.state.view : 'root';
+      if (view === 'chat' && event.state?.conversationId) {
+        const conversation = state.conversations.find((item) => item.conversation_id === event.state.conversationId);
+        if (conversation) {
+          state.currentConversation = conversation;
+          setSidebarOpen(false);
+          renderConversations();
+          renderChatHeader();
+          renderMessageRequestBar();
+          state.appView = 'chat';
+          return;
+        }
+      }
+
+      if (view === 'list') {
+        setSidebarOpen(true);
+        state.appView = 'list';
+        return;
+      }
+
+      const exit = confirm('Are you sure you want to exit RealYou Chat?');
+      if (exit) {
+        state.appHistoryReady = false;
+        history.back();
+      } else {
+        pushAppView(state.currentConversation ? 'chat' : 'list', {
+          conversationId: state.currentConversation?.conversation_id || null
+        });
+        if (!state.currentConversation) setSidebarOpen(true);
+      }
+    }
+
+    function handleBeforeUnload(event) {
+      if ($('appScreen').classList.contains('hidden')) return;
+      event.preventDefault();
+      event.returnValue = '';
     }
 
     function applyStoredTheme() {
