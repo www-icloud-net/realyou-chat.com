@@ -336,6 +336,13 @@
       border-color: rgba(255,85,116,.28);
     }
 
+    .btn.active-toggle {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 14px 28px rgba(124,92,255,.24);
+    }
+
     .btn.warning {
       background: rgba(255,203,107,.16);
       color: #8a5a00;
@@ -3652,6 +3659,9 @@
       ringtoneTimer: null,
       callMuted: false,
       callCameraOff: false,
+      callSpeakerOn: false,
+      speakerSinkId: '',
+      privateSinkId: '',
       availableVideoInputs: [],
       currentVideoDeviceIndex: 0,
       currentVideoDeviceId: null,
@@ -3856,7 +3866,7 @@
       $('muteCallBtn').addEventListener('click', toggleCallMute);
       $('toggleCameraBtn').addEventListener('click', toggleCallCamera);
       $('switchCameraBtn').addEventListener('click', switchCallCamera);
-      $('speakerBtn').addEventListener('click', chooseCallSpeaker);
+      $('speakerBtn').addEventListener('click', toggleCallSpeaker);
       window.addEventListener('online', handleOnline);
       window.addEventListener('offline', handleOffline);
       $('refreshBtn').addEventListener('click', async () => {
@@ -4767,6 +4777,9 @@
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Calls are not supported in this browser.');
       state.callMuted = false;
       state.callCameraOff = false;
+      state.callSpeakerOn = false;
+      state.speakerSinkId = '';
+      state.privateSinkId = '';
       state.availableVideoInputs = [];
       state.currentVideoDeviceId = null;
       const constraints = {
@@ -4792,6 +4805,7 @@
       state.remoteStream = new MediaStream();
       $('remoteVideo').srcObject = state.remoteStream;
       $('remoteAudio').srcObject = state.remoteStream;
+      applySpeakerMode(false).catch(() => {});
       state.peerConnection = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
       });
@@ -4816,6 +4830,8 @@
       state.remoteStream = null;
       state.activeCall = null;
       state.pendingCallOffer = null;
+      state.callSpeakerOn = false;
+      updateSpeakerButton();
       $('remoteVideo').srcObject = null;
       $('remoteAudio').srcObject = null;
       $('incomingCallActions').classList.add('hidden');
@@ -4841,9 +4857,9 @@
       $('modalBackdrop').classList.toggle('call-fullscreen-backdrop', kind === 'video');
       $('toggleCameraBtn').classList.toggle('hidden', kind !== 'video');
       $('switchCameraBtn').classList.toggle('hidden', kind !== 'video');
-      $('speakerBtn').classList.toggle('hidden', !canSelectSpeakerOutput());
       $('muteCallBtn').textContent = 'Mute';
       $('toggleCameraBtn').textContent = 'Camera off';
+      updateSpeakerButton();
     }
 
     function requestCallFullscreen(kind) {
@@ -4908,24 +4924,73 @@
       }
     }
 
-    async function chooseCallSpeaker() {
-      const audio = $('remoteAudio');
-      if (!canSelectSpeakerOutput()) {
-        audio.muted = false;
-        audio.volume = 1;
-        return;
-      }
+    async function toggleCallSpeaker() {
+      const next = !state.callSpeakerOn;
       try {
-        const output = await navigator.mediaDevices.selectAudioOutput();
-        await audio.setSinkId(output.deviceId);
-        toast('Speaker changed');
+        await applySpeakerMode(next);
+        state.callSpeakerOn = next;
+        updateSpeakerButton();
       } catch (error) {
         if (error?.name !== 'AbortError') toast(readableError(error), 'error');
       }
     }
 
-    function canSelectSpeakerOutput() {
-      return Boolean($('remoteAudio')?.setSinkId && navigator.mediaDevices?.selectAudioOutput);
+    async function applySpeakerMode(enabled) {
+      const audio = $('remoteAudio');
+      if (!audio) return;
+      audio.muted = false;
+      audio.volume = enabled ? 1 : 0.72;
+
+      if (!audio.setSinkId) return;
+
+      const sinkId = enabled
+        ? await preferredSpeakerSinkId()
+        : await preferredPrivateSinkId();
+
+      await audio.setSinkId(sinkId || 'default');
+    }
+
+    async function preferredSpeakerSinkId() {
+      if (state.speakerSinkId) return state.speakerSinkId;
+      const outputs = await getAudioOutputs();
+      const speaker = outputs.find((device) => /speaker|loud|built.?in|default|external/i.test(device.label || ''));
+      if (speaker?.deviceId) {
+        state.speakerSinkId = speaker.deviceId;
+        return state.speakerSinkId;
+      }
+      if (navigator.mediaDevices?.selectAudioOutput) {
+        const selected = await navigator.mediaDevices.selectAudioOutput().catch(() => null);
+        if (selected?.deviceId) {
+          state.speakerSinkId = selected.deviceId;
+          return state.speakerSinkId;
+        }
+      }
+      return 'default';
+    }
+
+    async function preferredPrivateSinkId() {
+      if (state.privateSinkId) return state.privateSinkId;
+      const outputs = await getAudioOutputs();
+      const privateOutput = outputs.find((device) => /ear|receiver|headphone|headset|bud|communication/i.test(device.label || ''));
+      if (privateOutput?.deviceId) {
+        state.privateSinkId = privateOutput.deviceId;
+        return state.privateSinkId;
+      }
+      return 'default';
+    }
+
+    async function getAudioOutputs() {
+      if (!navigator.mediaDevices?.enumerateDevices) return [];
+      const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+      return devices.filter((device) => device.kind === 'audiooutput');
+    }
+
+    function updateSpeakerButton() {
+      const button = $('speakerBtn');
+      if (!button) return;
+      button.textContent = state.callSpeakerOn ? 'Speaker on' : 'Speaker off';
+      button.classList.toggle('active-toggle', state.callSpeakerOn);
+      button.setAttribute('aria-pressed', String(state.callSpeakerOn));
     }
 
     function startRingtone() {
