@@ -2704,6 +2704,10 @@
       }
     }
 
+    .telegram-drawer {
+      display: none;
+    }
+
     @media (max-width: 760px) {
       #appScreen.app-shell {
         width: 100vw;
@@ -2714,6 +2718,205 @@
 
       #appScreen .wa-rail {
         display: none;
+      }
+
+      .drawer-scrim:not(.hidden) {
+        display: block !important;
+        position: fixed;
+        inset: 0;
+        z-index: 82;
+        background: rgba(4, 9, 16, .58);
+      }
+
+      .telegram-drawer {
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 96;
+        display: flex;
+        width: min(86vw, 392px);
+        max-width: 100vw;
+        height: 100dvh;
+        flex-direction: column;
+        overflow: hidden;
+        background: #17202b;
+        color: #f5f8fb;
+        box-shadow: 14px 0 38px rgba(0,0,0,.34);
+      }
+
+      .telegram-drawer-head {
+        flex: 0 0 auto;
+        padding: max(14px, env(safe-area-inset-top)) 18px 18px;
+        background: #253244;
+      }
+
+      .telegram-statusbar {
+        min-height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: rgba(255,255,255,.78);
+        font-size: 13px;
+      }
+
+      .telegram-statusbar .icon-svg {
+        width: 24px;
+        height: 24px;
+        color: #fff;
+      }
+
+      .telegram-account-main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 42px;
+        gap: 12px;
+        align-items: end;
+        margin-top: 8px;
+      }
+
+      .telegram-profile-button,
+      .telegram-icon-button,
+      .telegram-account-row,
+      .telegram-menu-list button {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: inherit;
+      }
+
+      .telegram-profile-button {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: 68px minmax(0, 1fr);
+        gap: 12px;
+        align-items: end;
+        padding: 0;
+        text-align: left;
+      }
+
+      .telegram-profile-button .avatar {
+        width: 68px;
+        height: 68px;
+        border: 0;
+        box-shadow: none;
+      }
+
+      .telegram-account-text {
+        min-width: 0;
+        display: grid;
+        gap: 5px;
+        padding-bottom: 2px;
+      }
+
+      .telegram-account-text strong,
+      .telegram-account-row strong,
+      .telegram-menu-list strong {
+        min-width: 0;
+        overflow: hidden;
+        color: #fff;
+        font-size: 20px;
+        line-height: 1.15;
+        font-weight: 650;
+        letter-spacing: 0;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .telegram-account-text span,
+      .telegram-account-row small {
+        min-width: 0;
+        overflow: hidden;
+        color: #aeb9c8;
+        font-size: 15px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .telegram-icon-button {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        color: #eaf3ff;
+      }
+
+      .telegram-account-list {
+        flex: 0 0 auto;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255,255,255,.06);
+        background: #17202b;
+      }
+
+      .telegram-account-row {
+        width: 100%;
+        min-height: 64px;
+        display: grid;
+        grid-template-columns: 56px minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        padding: 8px 22px;
+        text-align: left;
+      }
+
+      .telegram-account-row .avatar {
+        width: 48px;
+        height: 48px;
+        border: 0;
+        box-shadow: none;
+      }
+
+      .telegram-account-row em {
+        min-width: 34px;
+        min-height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: #69a9e8;
+        color: #fff;
+        font-style: normal;
+        font-weight: 800;
+      }
+
+      .telegram-menu-icon,
+      .telegram-menu-list span {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        color: #8d98a8;
+      }
+
+      .telegram-menu-icon .icon-svg,
+      .telegram-menu-list .icon-svg {
+        width: 28px;
+        height: 28px;
+        stroke-width: 1.8;
+      }
+
+      .telegram-menu-list {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 12px 0 max(16px, env(safe-area-inset-bottom));
+        background: #17202b;
+        overscroll-behavior: contain;
+      }
+
+      .telegram-menu-list button {
+        width: 100%;
+        min-height: 60px;
+        display: grid;
+        grid-template-columns: 58px minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+        padding: 8px 24px;
+        text-align: left;
+      }
+
+      .telegram-account-row:active,
+      .telegram-icon-button:active,
+      .telegram-menu-list button:active {
+        background: rgba(255,255,255,.08);
       }
 
       #appScreen .chat-main {
@@ -3027,8 +3230,51 @@
     </div>
   </section>
 
-  <button id="mobileMenuBtn" class="hamburger hidden" type="button" aria-label="Open menu"><span data-icon="messages-square"></span></button>
+  <button id="mobileMenuBtn" class="hamburger hidden" type="button" aria-label="Open menu"><span data-icon="menu"></span></button>
   <div id="drawerScrim" class="drawer-scrim hidden"></div>
+  <aside id="telegramDrawer" class="telegram-drawer hidden" aria-hidden="true">
+    <div class="telegram-drawer-head">
+      <div class="telegram-statusbar">
+        <span id="telegramDrawerTime">RealYou</span>
+        <span data-icon="sun"></span>
+      </div>
+      <div class="telegram-account-main">
+        <button id="telegramDrawerProfileBtn" class="telegram-profile-button" type="button" aria-label="Edit profile">
+          <span id="telegramDrawerAvatar" class="avatar"></span>
+          <span class="telegram-account-text">
+            <strong id="telegramDrawerName">RealYou</strong>
+            <span id="telegramDrawerPhone">@realyou</span>
+          </span>
+        </button>
+        <button id="telegramDrawerThemeBtn" class="telegram-icon-button" type="button" aria-label="Toggle theme"><span data-icon="moon"></span></button>
+      </div>
+    </div>
+    <div class="telegram-account-list">
+      <button id="telegramDrawerCurrentAccountBtn" class="telegram-account-row" type="button">
+        <span id="telegramDrawerSmallAvatar" class="avatar small"></span>
+        <span>
+          <strong id="telegramDrawerSmallName">RealYou</strong>
+          <small id="telegramDrawerSmallMeta">@realyou</small>
+        </span>
+        <em id="telegramDrawerUnread">0</em>
+      </button>
+      <button id="telegramDrawerAddAccountBtn" class="telegram-account-row" type="button">
+        <span class="telegram-menu-icon" data-icon="plus"></span>
+        <span><strong>Add Account</strong></span>
+      </button>
+    </div>
+    <div class="telegram-menu-list">
+      <button type="button" data-mobile-drawer-action="profile"><span data-icon="contact"></span><strong>My Profile</strong></button>
+      <button type="button" data-mobile-drawer-action="status"><span data-icon="smile"></span><strong>Set Emoji Status</strong></button>
+      <button type="button" data-mobile-drawer-action="group"><span data-icon="users"></span><strong>New Group</strong></button>
+      <button type="button" data-mobile-drawer-action="contacts"><span data-icon="contact"></span><strong>Contacts</strong></button>
+      <button type="button" data-mobile-drawer-action="calls"><span data-icon="phone-call"></span><strong>Calls</strong></button>
+      <button type="button" data-mobile-drawer-action="saved"><span data-icon="check"></span><strong>Saved Messages</strong></button>
+      <button type="button" data-mobile-drawer-action="settings"><span data-icon="settings"></span><strong>Settings</strong></button>
+      <button type="button" data-mobile-drawer-action="family"><span data-icon="shield-heart"></span><strong>Family</strong></button>
+      <button type="button" data-mobile-drawer-action="invite"><span data-icon="user-plus"></span><strong>Invite Friends</strong></button>
+    </div>
+  </aside>
 
   <section id="appScreen" class="app-shell hidden">
     <nav class="wa-rail" aria-label="Main navigation">
@@ -3787,6 +4033,7 @@
       lastConversationTouchOpenAt: 0,
       lastConversationTouchOpenId: '',
       accountDeletionInProgress: false,
+      mobileDrawerOpen: false,
       appHistoryReady: false,
       appView: 'list',
       mediaRecorder: null,
@@ -3822,6 +4069,8 @@
     const $ = (id) => document.getElementById(id);
     const OUTBOX_STORAGE_PREFIX = 'realyou-offline-outbox';
     const ICONS = {
+      menu: '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>',
+      'arrow-left': '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
       'messages-square': '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 9h8"/><path d="M8 13h5"/>',
       'phone-call': '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.35 1.9.66 2.81a2 2 0 0 1-.45 2.11L8.05 9.91a16 16 0 0 0 6.04 6.04l1.27-1.27a2 2 0 0 1 2.11-.45c.91.31 1.85.53 2.81.66A2 2 0 0 1 22 16.92z"/><path d="M14 2a8 8 0 0 1 8 8"/><path d="M14 6a4 4 0 0 1 4 4"/>',
       'circle-dot': '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
@@ -3943,6 +4192,16 @@
       $('currentUserAvatar').addEventListener('click', openProfileModal);
       $('railProfileBtn').addEventListener('click', openProfileModal);
       $('mobileProfileBtn').addEventListener('click', openProfileModal);
+      $('telegramDrawerProfileBtn').addEventListener('click', () => handleMobileDrawerAction('profile'));
+      $('telegramDrawerCurrentAccountBtn').addEventListener('click', () => handleMobileDrawerAction('profile'));
+      $('telegramDrawerThemeBtn').addEventListener('click', () => {
+        toggleTheme();
+        renderMobileDrawer();
+      });
+      $('telegramDrawerAddAccountBtn').addEventListener('click', () => {
+        setMobileDrawerOpen(false);
+        signOut();
+      });
       $('profileForm').addEventListener('submit', saveProfile);
       $('profileAvatarFile').addEventListener('change', previewSelectedProfileAvatar);
       $('familyHubBtn').addEventListener('click', openFamilyModal);
@@ -3976,7 +4235,7 @@
       $('declineRequestBtn').addEventListener('click', declineConversationRequest);
       $('createGroupBtn').addEventListener('click', openGroupModal);
       $('quickGroupBtn').addEventListener('click', openGroupModal);
-      $('sidebarMenuBtn').addEventListener('click', openSettingsModal);
+      $('sidebarMenuBtn').addEventListener('click', handleSidebarMenu);
       $('groupForm').addEventListener('submit', createGroup);
       $('pollForm').addEventListener('submit', createPoll);
       $('eventForm').addEventListener('submit', createEvent);
@@ -4021,12 +4280,15 @@
         if (state.currentConversation) await selectConversation(state.currentConversation.conversation_id, { keepSidebar: true });
       });
       $('mobileMenuBtn').addEventListener('click', () => {
-        const open = !$('sidebar').classList.contains('open');
-        setSidebarOpen(open);
-        if (open) pushAppView('list');
-        else if (state.currentConversation) pushAppView('chat', { conversationId: state.currentConversation.conversation_id });
+        handleMobileMenuButton();
       });
-      $('drawerScrim').addEventListener('click', () => setSidebarOpen(false));
+      $('drawerScrim').addEventListener('click', () => {
+        if (state.mobileDrawerOpen) setMobileDrawerOpen(false);
+        else setSidebarOpen(false);
+      });
+      document.querySelectorAll('[data-mobile-drawer-action]').forEach((button) => {
+        button.addEventListener('click', () => handleMobileDrawerAction(button.dataset.mobileDrawerAction));
+      });
       window.addEventListener('resize', debounce(handleViewportLayout, 160));
       window.addEventListener('popstate', handleAppPopState);
       window.addEventListener('beforeunload', handleBeforeUnload);
@@ -4378,7 +4640,10 @@
       $('appScreen').classList.add('hidden');
       $('mobileMenuBtn').classList.add('hidden');
       $('drawerScrim').classList.add('hidden');
+      $('telegramDrawer').classList.add('hidden');
+      $('telegramDrawer').setAttribute('aria-hidden', 'true');
       $('sidebar').classList.remove('open');
+      state.mobileDrawerOpen = false;
       setAuthStatus('');
     }
 
@@ -4425,6 +4690,7 @@
       state.messageLoadRequest += 1;
       state.appHistoryReady = false;
       state.appView = 'list';
+      state.mobileDrawerOpen = false;
       clearTimeout(state.lockTimer);
       clearTimeout(state.logoutTimer);
       clearTimeout(state.callCleanupTimer);
@@ -4440,6 +4706,9 @@
       state.settings = { ...DEFAULT_CHAT_SETTINGS };
       applyUserSettings();
       $('lockScreen').classList.add('hidden');
+      $('drawerScrim').classList.add('hidden');
+      $('telegramDrawer').classList.add('hidden');
+      $('telegramDrawer').setAttribute('aria-hidden', 'true');
       const channels = sb.getChannels ? sb.getChannels() : [];
       await Promise.all(channels.map((channel) => sb.removeChannel(channel)));
       state.messageChannel = null;
@@ -5416,6 +5685,24 @@
       $('mobileProfileBtn').innerHTML = avatarMarkup(state.profile.avatar_url, displayName(state.profile), 'small');
       $('currentUserName').textContent = displayName(state.profile);
       $('currentUserHandle').textContent = '@' + state.profile.username;
+      renderMobileDrawer();
+    }
+
+    function renderMobileDrawer() {
+      if (!state.profile) return;
+      const name = displayName(state.profile);
+      const handle = state.profile.phone || state.user?.user_metadata?.phone_number || `@${state.profile.username || 'realyou'}`;
+      const unread = state.conversations.reduce((sum, conversation) => sum + Number(conversation.unread_count || 0), 0);
+      $('telegramDrawerAvatar').innerHTML = avatarInner(state.profile.avatar_url, name);
+      $('telegramDrawerSmallAvatar').innerHTML = avatarInner(state.profile.avatar_url, name);
+      $('telegramDrawerName').textContent = name;
+      $('telegramDrawerPhone').textContent = handle;
+      $('telegramDrawerSmallName').textContent = name;
+      $('telegramDrawerSmallMeta').textContent = state.profile.bio || `@${state.profile.username || 'realyou'}`;
+      $('telegramDrawerUnread').textContent = unread > 99 ? '99+' : String(unread);
+      $('telegramDrawerUnread').classList.toggle('hidden', unread <= 0);
+      $('telegramDrawerThemeBtn').innerHTML = icon(state.settings.theme === 'dark' ? 'sun' : 'moon');
+      hydrateIcons($('telegramDrawer'));
     }
 
     function renderConversations() {
@@ -5429,6 +5716,7 @@
         .sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned));
 
       $('conversationCount').textContent = String(visibleConversations.length);
+      renderMobileDrawer();
 
       if (!visibleConversations.length) {
         list.innerHTML = emptyMarkup('No conversations', '');
@@ -7720,10 +8008,118 @@
 
     function setSidebarOpen(open) {
       const shouldOpen = Boolean(open);
+      if (shouldOpen) setMobileDrawerOpen(false);
       $('sidebar').classList.toggle('open', shouldOpen);
-      $('drawerScrim').classList.toggle('hidden', !shouldOpen || isMobileLayout());
-      $('mobileMenuBtn').setAttribute('aria-expanded', String(shouldOpen));
+      if (!state.mobileDrawerOpen) $('drawerScrim').classList.add('hidden');
+      $('mobileMenuBtn').setAttribute('aria-expanded', String(shouldOpen || state.mobileDrawerOpen));
       state.appView = shouldOpen ? 'list' : (state.currentConversation ? 'chat' : 'list');
+      updateMobileMenuButton();
+    }
+
+    function setMobileDrawerOpen(open) {
+      const shouldOpen = Boolean(open) && isMobileLayout();
+      state.mobileDrawerOpen = shouldOpen;
+      if (shouldOpen) {
+        renderMobileDrawer();
+        $('telegramDrawer').classList.remove('hidden');
+        $('telegramDrawer').setAttribute('aria-hidden', 'false');
+        $('drawerScrim').classList.remove('hidden');
+      } else {
+        $('telegramDrawer').classList.add('hidden');
+        $('telegramDrawer').setAttribute('aria-hidden', 'true');
+        $('drawerScrim').classList.add('hidden');
+      }
+      $('mobileMenuBtn').setAttribute('aria-expanded', String(shouldOpen || $('sidebar').classList.contains('open')));
+      updateMobileMenuButton();
+    }
+
+    function handleMobileMenuButton() {
+      if (!isMobileLayout()) return;
+      if (state.mobileDrawerOpen) {
+        setMobileDrawerOpen(false);
+        return;
+      }
+      if ($('sidebar').classList.contains('open')) {
+        setMobileDrawerOpen(true);
+        pushAppView('drawer');
+        return;
+      }
+      setSidebarOpen(true);
+      pushAppView('list');
+    }
+
+    function handleSidebarMenu() {
+      if (isMobileLayout()) {
+        setMobileDrawerOpen(true);
+        pushAppView('drawer');
+        return;
+      }
+      openSettingsModal();
+    }
+
+    function updateMobileMenuButton() {
+      const button = $('mobileMenuBtn');
+      if (!button) return;
+      if (!isMobileLayout()) {
+        button.innerHTML = icon('messages-square');
+        return;
+      }
+      if (state.mobileDrawerOpen) button.innerHTML = icon('x');
+      else if ($('sidebar').classList.contains('open')) button.innerHTML = icon('menu');
+      else button.innerHTML = icon('arrow-left');
+    }
+
+    function handleMobileDrawerAction(action) {
+      setMobileDrawerOpen(false);
+      switch (action) {
+        case 'profile':
+        case 'status':
+          openProfileModal();
+          break;
+        case 'group':
+          openGroupModal();
+          break;
+        case 'contacts':
+          setSidebarOpen(true);
+          setSidebarTab('contacts');
+          pushAppView('list');
+          break;
+        case 'calls':
+          if (state.currentConversation) startCall('audio');
+          else setSidebarOpen(true);
+          break;
+        case 'saved':
+          setConversationFilter('favorites');
+          setSidebarOpen(true);
+          pushAppView('list');
+          break;
+        case 'settings':
+          openSettingsModal();
+          break;
+        case 'family':
+          openFamilyModal();
+          break;
+        case 'invite':
+          shareInvite();
+          break;
+        default:
+          break;
+      }
+    }
+
+    async function shareInvite() {
+      const shareData = {
+        title: 'RealYou Chat',
+        text: 'Join me on RealYou Chat.',
+        url: location.href
+      };
+      try {
+        if (navigator.share) await navigator.share(shareData);
+        else {
+          await navigator.clipboard?.writeText(location.href);
+          toast('Invite link copied');
+        }
+      } catch {}
     }
 
     function isMobileLayout() {
@@ -7733,11 +8129,13 @@
     function handleViewportLayout() {
       if (!$('appScreen') || $('appScreen').classList.contains('hidden')) return;
       if (!isMobileLayout()) {
+        setMobileDrawerOpen(false);
         setSidebarOpen(false);
         return;
       }
       initAppHistory();
       if (!state.currentConversation) setSidebarOpen(true);
+      updateMobileMenuButton();
     }
 
     function initAppHistory() {
@@ -7766,11 +8164,23 @@
       if ($('appScreen').classList.contains('hidden')) return;
       if (!isMobileLayout()) return;
 
+      if (state.mobileDrawerOpen) {
+        setMobileDrawerOpen(false);
+        return;
+      }
+
       if (!$('modalBackdrop').classList.contains('hidden')) {
         closeModals();
       }
 
       const view = event.state?.realyou ? event.state.view : 'root';
+      if (view === 'drawer') {
+        setSidebarOpen(true);
+        setMobileDrawerOpen(true);
+        state.appView = 'drawer';
+        return;
+      }
+
       if (view === 'chat' && event.state?.conversationId) {
         const conversation = state.conversations.find((item) => item.conversation_id === event.state.conversationId);
         if (conversation) {
@@ -7822,6 +8232,7 @@
     function updateThemeButton() {
       const light = document.documentElement.classList.contains('light');
       if ($('themeToggleBtn')) $('themeToggleBtn').innerHTML = icon(light ? 'sun' : 'moon');
+      if ($('telegramDrawerThemeBtn')) $('telegramDrawerThemeBtn').innerHTML = icon(light ? 'sun' : 'moon');
     }
 
     function renderEmojiPicker() {
