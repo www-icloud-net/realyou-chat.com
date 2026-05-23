@@ -2016,6 +2016,41 @@
       line-height: 1.35;
     }
 
+    .contact-card-message {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      align-items: center;
+      gap: 10px;
+      min-width: min(260px, 70vw);
+      padding: 10px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.06);
+    }
+
+    .contact-card-avatar {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .contact-card-name {
+      margin: 0;
+      font-weight: 900;
+      color: var(--text-primary);
+    }
+
+    .contact-card-phone {
+      margin: 2px 0 0;
+      color: var(--text-secondary);
+      overflow-wrap: anywhere;
+      font-size: 14px;
+    }
+
     .member-row {
       grid-template-columns: auto 1fr auto;
       align-items: center;
@@ -3517,6 +3552,7 @@
         <input id="audioUploadInput" class="hidden" type="file" accept="audio/*" />
         <input id="stickerUploadInput" class="hidden" type="file" accept="image/*" />
         <input id="cameraInput" class="hidden" type="file" accept="image/*" capture="environment" />
+        <input id="contactShareInput" class="hidden" type="file" accept=".vcf,text/vcard,text/x-vcard" />
         <input id="familyAlbumInput" class="hidden" type="file" accept="image/*,video/*" />
         <input id="restoreBackupInput" class="hidden" type="file" accept="application/json,.json" />
         <div id="replyPreview" class="reply-preview hidden">
@@ -4095,6 +4131,8 @@
       replyTo: null,
       selectedMessageId: null,
       pendingPreviewFile: null,
+      pendingMediaMessages: new Map(),
+      pendingMediaPreviewUrls: new Map(),
       offlineMediaOutbox: [],
       lockTimer: null,
       logoutTimer: null,
@@ -4356,6 +4394,7 @@
       $('audioUploadInput').addEventListener('change', (event) => handleFileInput(event, 'audio'));
       $('stickerUploadInput').addEventListener('change', (event) => handleFileInput(event, 'sticker'));
       $('cameraInput').addEventListener('change', (event) => handleFileInput(event, 'camera'));
+      $('contactShareInput').addEventListener('change', importContactCardForShare);
       $('audioCallBtn').addEventListener('click', () => startCall('audio'));
       $('videoCallBtn').addEventListener('click', () => startCall('video'));
       $('chatSearchBtn').addEventListener('click', () => $('peopleSearchInput').focus());
@@ -5006,7 +5045,7 @@
         ...payload,
         metadata: {
           ...metadata,
-          client_id: metadata.client_id || crypto.randomUUID()
+          client_id: metadata.client_id || randomId()
         }
       };
     }
@@ -5021,21 +5060,118 @@
       };
     }
 
+    function pendingMessageFromMediaOutbox(item) {
+      return {
+        id: `pending-${item.id}`,
+        conversation_id: item.conversation_id,
+        sender_id: state.user.id,
+        content: item.name || item.messageType,
+        message_type: item.messageType,
+        media_url: item.dataUrl,
+        media_name: item.name || item.messageType,
+        media_mime: item.type || 'application/octet-stream',
+        media_size: item.size || 0,
+        duration_seconds: item.durationSeconds || null,
+        metadata: { ...(item.metadata || {}), client_id: item.id, pending_state: 'queued' },
+        created_at: item.created_at,
+        read_at: null,
+        pending: true
+      };
+    }
+
+    function pendingClientId(message) {
+      return message?.metadata?.client_id || (String(message?.id || '').startsWith('pending-') ? String(message.id).slice(8) : '');
+    }
+
+    function upsertPendingMessages(messages) {
+      const unique = new Map();
+      messages.forEach((message) => {
+        const clientId = pendingClientId(message);
+        if (!clientId) return;
+        unique.set(clientId, message);
+      });
+      return [...unique.values()];
+    }
+
     function mergePendingMessages(conversationId) {
       const confirmedClientIds = new Set(
         state.messages
+          .filter((message) => !message.pending)
           .map((message) => message.metadata?.client_id)
           .filter(Boolean)
       );
-      const pending = state.offlineOutbox
+      const pendingText = state.offlineOutbox
         .filter((item) => item.payload.conversation_id === conversationId)
         .filter((item) => !confirmedClientIds.has(item.payload.metadata?.client_id))
         .map(pendingMessageFromOutbox);
+      const pendingMedia = state.offlineMediaOutbox
+        .filter((item) => item.conversation_id === conversationId)
+        .filter((item) => !confirmedClientIds.has(item.id))
+        .map(pendingMessageFromMediaOutbox);
+      const liveMedia = [...state.pendingMediaMessages.values()]
+        .filter((message) => message.conversation_id === conversationId)
+        .filter((message) => !confirmedClientIds.has(pendingClientId(message)));
+      const pending = upsertPendingMessages([...pendingText, ...pendingMedia, ...liveMedia]);
 
       state.messages = [
         ...state.messages.filter((message) => !message.pending),
         ...pending
       ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    }
+
+    function revokePendingMediaPreview(clientId) {
+      const url = state.pendingMediaPreviewUrls.get(clientId);
+      if (url) URL.revokeObjectURL(url);
+      state.pendingMediaPreviewUrls.delete(clientId);
+    }
+
+    function removePendingMediaMessage(clientId) {
+      if (!clientId) return;
+      revokePendingMediaPreview(clientId);
+      state.pendingMediaMessages.delete(clientId);
+      state.messages = state.messages.filter((message) => pendingClientId(message) !== clientId);
+    }
+
+    function updatePendingMediaState(clientId, pendingState) {
+      const pending = state.pendingMediaMessages.get(clientId);
+      if (!pending) return;
+      pending.metadata = { ...(pending.metadata || {}), pending_state: pendingState };
+      if (state.currentConversation?.conversation_id === pending.conversation_id) {
+        mergePendingMessages(pending.conversation_id);
+        scheduleMessagesRender(true);
+      }
+    }
+
+    function ensurePendingMediaMessage(file, messageType, durationSeconds, metadata = {}, conversationId = null, replyToId = null) {
+      const targetConversationId = conversationId || state.currentConversation?.conversation_id;
+      if (!targetConversationId || !state.user) return null;
+      const clientId = metadata.client_id || randomId();
+      if (state.pendingMediaMessages.has(clientId)) return state.pendingMediaMessages.get(clientId);
+      const previewUrl = URL.createObjectURL(file);
+      state.pendingMediaPreviewUrls.set(clientId, previewUrl);
+      const pending = {
+        id: `pending-${clientId}`,
+        conversation_id: targetConversationId,
+        sender_id: state.user.id,
+        content: file.name || messageType,
+        message_type: messageType,
+        media_url: previewUrl,
+        media_name: file.name || `${messageType}-${Date.now()}`,
+        media_mime: file.type || mimeFromFileName(file.name),
+        media_size: file.size || 0,
+        duration_seconds: durationSeconds,
+        metadata: { ...metadata, client_id: clientId, pending_state: navigator.onLine ? 'sending' : 'queued' },
+        reply_to_id: replyToId,
+        created_at: new Date().toISOString(),
+        read_at: null,
+        pending: true
+      };
+      state.pendingMediaMessages.set(clientId, pending);
+      if (state.currentConversation?.conversation_id === targetConversationId && state.activeMessageConversationId === targetConversationId) {
+        mergePendingMessages(targetConversationId);
+        scheduleMessagesRender(true);
+      }
+      return pending;
     }
 
     function queueOfflineMessage(payload) {
@@ -5066,13 +5202,21 @@
       if (!navigator.onLine) return queueOfflineMessage(messagePayload);
 
       try {
-        const { error } = await withTimeout(
-          sb.from('messages').insert(messagePayload),
+        const { data, error } = await withTimeout(
+          sb.from('messages').insert(messagePayload).select('*').single(),
           isMobileLayout() ? 15000 : 24000,
           'Message send timed out. It will be retried when your connection is stable.'
         );
         if (error) throw error;
-        return { queued: false, clientId: messagePayload.metadata.client_id };
+        const clientId = messagePayload.metadata.client_id;
+        if (data && state.currentConversation?.conversation_id === data.conversation_id && state.activeMessageConversationId === data.conversation_id) {
+          if (clientId) removePendingMediaMessage(clientId);
+          state.messages = mergeMessageArrays(state.messages, [data]);
+          scheduleMessagesRender(true);
+        } else if (clientId) {
+          removePendingMediaMessage(clientId);
+        }
+        return { queued: false, clientId, message: data };
       } catch (error) {
         if (isOfflineSendError(error)) return queueOfflineMessage(messagePayload);
         throw error;
@@ -5295,6 +5439,8 @@
           if (conversationId !== state.activeMessageConversationId || state.currentConversation?.conversation_id !== conversationId) return;
           const clientId = message.metadata?.client_id;
           if (clientId) {
+            revokePendingMediaPreview(clientId);
+            state.pendingMediaMessages.delete(clientId);
             state.messages = state.messages.filter((item) => item.metadata?.client_id !== clientId && item.id !== `pending-${clientId}`);
           }
           if (!state.messages.some((item) => item.id === message.id)) {
@@ -5369,7 +5515,7 @@
       if (!state.currentConversation) return;
       try {
         await setupCallMedia(kind);
-        const callId = crypto.randomUUID();
+        const callId = randomId();
         state.activeCall = { id: callId, kind, initiator: true };
         openModal('callModal');
         showActiveCallControls(kind);
@@ -6005,7 +6151,8 @@
         const mine = message.sender_id === state.user.id;
         const sender = state.profileCache.get(message.sender_id) || { username: 'user', full_name: 'RealYou user' };
         const name = mine ? 'You' : displayName(sender);
-        const status = message.pending ? 'Waiting for internet' : (message.read_at ? 'Seen' : 'Sent');
+        const pendingState = message.metadata?.pending_state === 'queued' ? 'Queued' : 'Sending';
+        const status = message.pending ? pendingState : (message.read_at ? 'Seen' : 'Sent');
         const reactions = renderReactions(message.id);
         const reply = renderReplyCard(message.reply_to_id);
         const edited = message.edited_at ? '<span>Edited</span>' : '';
@@ -6062,6 +6209,26 @@
 
       if (message.deleted_at) {
         return '<div>Deleted</div>';
+      }
+
+      if (type === 'text' && meta.contact_card) {
+        const contactName = meta.contact_name || message.content || 'Contact';
+        const contactPhone = meta.contact_phone || '';
+        const initials = contactName
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() || '')
+          .join('') || 'C';
+        return `
+          <div class="contact-card-message">
+            <div class="contact-card-avatar">${escapeHtml(initials)}</div>
+            <div>
+              <p class="contact-card-name">${escapeHtml(contactName)}</p>
+              ${contactPhone ? `<p class="contact-card-phone">${escapeHtml(contactPhone)}</p>` : ''}
+            </div>
+          </div>
+        `;
       }
 
       if (type === 'image' && message.media_url) {
@@ -6436,6 +6603,69 @@
       }
     }
 
+    async function shareContactFromDevice() {
+      if (!state.currentConversation) {
+        toast('Open a conversation first.', 'error');
+        return;
+      }
+      try {
+        if (!navigator.contacts?.select || !window.isSecureContext) {
+          $('contactShareInput').click();
+          return;
+        }
+        const supported = await navigator.contacts.getProperties?.().catch(() => ['name', 'tel']);
+        if (Array.isArray(supported) && !supported.includes('tel')) {
+          $('contactShareInput').click();
+          return;
+        }
+        const fields = Array.isArray(supported) && supported.includes('name') ? ['name', 'tel'] : ['tel'];
+        const contacts = await navigator.contacts.select(fields, { multiple: false });
+        const contact = contacts?.[0];
+        if (!contact) return;
+        await sendContactCard({
+          name: Array.isArray(contact.name) ? contact.name[0] : contact.name,
+          phone: Array.isArray(contact.tel) ? contact.tel[0] : contact.tel
+        });
+      } catch (error) {
+        if (error?.name !== 'AbortError') toast(readableError(error), 'error');
+      }
+    }
+
+    async function importContactCardForShare(event) {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file || !state.currentConversation) return;
+      try {
+        const text = await withTimeout(file.text(), 8000, 'Contact file could not be read.');
+        const contact = parseVcfContact(text);
+        if (!contact.phone && !contact.name) throw new Error('Contact file is empty.');
+        await sendContactCard(contact);
+      } catch (error) {
+        toast(readableError(error), 'error');
+      }
+    }
+
+    async function sendContactCard(contact) {
+      if (!state.currentConversation) throw new Error('Open a conversation first.');
+      const name = String(contact.name || 'Contact').trim() || 'Contact';
+      const phone = normalizeContactPhone(contact.phone || '') || String(contact.phone || '').trim();
+      const result = await insertOrQueueMessage({
+        conversation_id: state.currentConversation.conversation_id,
+        sender_id: state.user.id,
+        content: phone ? `${name}\n${phone}` : name,
+        message_type: 'text',
+        metadata: {
+          contact_card: true,
+          contact_name: name,
+          contact_phone: phone
+        },
+        reply_to_id: state.replyTo?.id || null
+      });
+      clearReply();
+      if (result.queued) toast('Offline. Contact will sync when internet returns.');
+      else playTone('send');
+    }
+
     async function importVcfContacts(event) {
       const file = event.target.files?.[0];
       event.target.value = '';
@@ -6484,6 +6714,21 @@
         .filter((line) => /^TEL/i.test(line))
         .map((line) => line.slice(line.indexOf(':') + 1).trim())
         .filter(Boolean);
+    }
+
+    function parseVcfContact(text) {
+      const lines = String(text || '').split(/\r?\n/);
+      const nameLine = lines.find((line) => /^FN/i.test(line)) || lines.find((line) => /^N/i.test(line));
+      const phoneLine = lines.find((line) => /^TEL/i.test(line));
+      const rawName = nameLine ? nameLine.slice(nameLine.indexOf(':') + 1).trim() : '';
+      const rawPhone = phoneLine ? phoneLine.slice(phoneLine.indexOf(':') + 1).trim() : '';
+      const name = rawName
+        .split(';')
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\\,/g, ',')
+        .trim();
+      return { name, phone: rawPhone };
     }
 
     function renderPeopleResults(container, users, clickHandler) {
@@ -7702,7 +7947,7 @@
       const prepared = isAvatar ? await prepareAvatarFile(file) : await prepareFileForUpload(file, 'image');
       if (!isAvatar) validateUploadFile(prepared, 'image');
       const extension = (prepared.name.split('.').pop() || 'png').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'png';
-      const path = `${state.user.id}/${folder}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+      const path = `${state.user.id}/${folder}/${Date.now()}-${randomId()}.${extension}`;
       await uploadStorageFile('avatars', path, prepared, {
         cacheControl: '3600',
         upsert: true,
@@ -7749,23 +7994,28 @@
       if (button.disabled) return;
       setButtonLoading(button, true, 'Preparing');
       let prepared = null;
-      const clientId = crypto.randomUUID();
+      const clientId = randomId();
+      const conversationId = state.currentConversation?.conversation_id;
+      const replyToId = state.replyTo?.id || null;
       try {
         await nextPaint();
         prepared = await prepareFileForUpload(file, messageType);
-        setButtonLoading(button, true, navigator.onLine ? 'Sending' : 'Queued');
-        await nextPaint();
-        await withTimeout(
-          sendMediaMessage(prepared, messageType, null, { client_id: clientId }),
-          isMobileLayout() ? MOBILE_MEDIA_SEND_TIMEOUT_MS : MEDIA_SEND_TIMEOUT_MS,
-          'Sending timed out. The media was kept on this device and will retry when the connection is stable.'
-        );
         state.pendingPreviewFile = null;
         closeModals();
+        setButtonLoading(button, false, 'Send');
+        const metadata = { client_id: clientId, conversation_id: conversationId };
+        sendMediaMessage(prepared, messageType, null, metadata, replyToId)
+          .then((result) => {
+            if (!result?.queued) scheduleConversationReload();
+          })
+          .catch((error) => {
+            removePendingMediaMessage(clientId);
+            toast(readableError(error), 'error');
+          });
       } catch (error) {
         if (prepared && isOfflineSendError(error)) {
           try {
-            await queueOfflineMedia(prepared, messageType, null, { client_id: clientId });
+            await queueOfflineMedia(prepared, messageType, null, { client_id: clientId, conversation_id: conversationId });
             state.pendingPreviewFile = null;
             closeModals();
             toast('Connection was unstable. Media queued and will sync automatically.');
@@ -7806,8 +8056,7 @@
         return;
       }
       if (action === 'contact') {
-        setSidebarTab('contacts');
-        toast('Use phone contacts or paste phone numbers to find registered users.');
+        shareContactFromDevice();
         return;
       }
       if (action === 'poll') {
@@ -7846,11 +8095,19 @@
       return 'document';
     }
 
-    async function sendMediaMessage(file, messageType, durationSeconds = null, metadata = {}) {
-      if (!state.currentConversation) throw new Error('Open a conversation first.');
+    async function sendMediaMessage(file, messageType, durationSeconds = null, metadata = {}, replyToIdOverride = null) {
+      const rawMetadata = metadata && typeof metadata === 'object' ? metadata : {};
+      const targetConversationId = rawMetadata.conversation_id || state.currentConversation?.conversation_id;
+      if (!targetConversationId) throw new Error('Open a conversation first.');
+      const { conversation_id: _conversationId, ...cleanMetadata } = rawMetadata;
+      const clientId = cleanMetadata.client_id || randomId();
+      const replyToId = replyToIdOverride ?? state.replyTo?.id ?? null;
+      const sendMetadata = { ...cleanMetadata, client_id: clientId };
       validateUploadFile(file, messageType, { offline: !navigator.onLine });
+      ensurePendingMediaMessage(file, messageType, durationSeconds, sendMetadata, targetConversationId, replyToId);
+      if (replyToId && state.currentConversation?.conversation_id === targetConversationId && state.replyTo?.id === replyToId) clearReply();
       if (!navigator.onLine) {
-        await queueOfflineMedia(file, messageType, durationSeconds, metadata);
+        await queueOfflineMedia(file, messageType, durationSeconds, { ...sendMetadata, conversation_id: targetConversationId });
         toast('Media queued');
         return { queued: true };
       }
@@ -7859,14 +8116,15 @@
         uploaded = await uploadChatFile(file, messageType);
       } catch (error) {
         if (isOfflineSendError(error)) {
-          await queueOfflineMedia(file, messageType, durationSeconds, metadata);
+          await queueOfflineMedia(file, messageType, durationSeconds, { ...sendMetadata, conversation_id: targetConversationId });
           toast('Connection was unstable. Media queued and will sync automatically.');
           return { queued: true };
         }
+        removePendingMediaMessage(clientId);
         throw error;
       }
       const messagePayload = withClientId({
-        conversation_id: state.currentConversation.conversation_id,
+        conversation_id: targetConversationId,
         sender_id: state.user.id,
         content: file.name || messageType,
         message_type: messageType,
@@ -7875,11 +8133,17 @@
         media_mime: file.type || mimeFromFileName(file.name),
         media_size: file.size,
         duration_seconds: durationSeconds,
-        metadata: messageType === 'sticker' ? { sticker: true, ...metadata } : metadata,
-        reply_to_id: state.replyTo?.id || null
+        metadata: messageType === 'sticker' ? { sticker: true, ...sendMetadata } : sendMetadata,
+        reply_to_id: replyToId
       });
       clearReply();
-      const result = await insertOrQueueMessage(messagePayload);
+      let result;
+      try {
+        result = await insertOrQueueMessage(messagePayload);
+      } catch (error) {
+        removePendingMediaMessage(clientId);
+        throw error;
+      }
       if (result.queued) toast('Offline. Media message will sync when internet returns.');
       else playTone('send');
       return result;
@@ -7887,8 +8151,12 @@
 
     async function queueOfflineMedia(file, messageType, durationSeconds = null, metadata = {}) {
       validateUploadFile(file, messageType, { offline: true });
-      const clientId = metadata.client_id || crypto.randomUUID();
+      const targetConversationId = metadata.conversation_id || state.currentConversation?.conversation_id;
+      if (!targetConversationId) throw new Error('Open a conversation first.');
+      const { conversation_id: _conversationId, ...cleanMetadata } = metadata;
+      const clientId = cleanMetadata.client_id || randomId();
       if (state.offlineMediaOutbox.some((queued) => queued.id === clientId)) return;
+      updatePendingMediaState(clientId, 'queued');
       const dataUrl = await withTimeout(
         fileToDataUrl(file),
         isMobileLayout() ? 10000 : 18000,
@@ -7896,18 +8164,22 @@
       );
       const item = {
         id: clientId,
-        conversation_id: state.currentConversation.conversation_id,
+        conversation_id: targetConversationId,
         name: file.name || `${messageType}-${Date.now()}`,
         type: file.type || 'application/octet-stream',
         size: file.size,
         messageType,
         durationSeconds,
-        metadata: { ...metadata, client_id: clientId },
+        metadata: { ...cleanMetadata, client_id: clientId },
         dataUrl,
         created_at: new Date().toISOString()
       };
       state.offlineMediaOutbox.push(item);
       saveOfflineMediaOutbox();
+      if (state.currentConversation?.conversation_id === targetConversationId) {
+        mergePendingMessages(targetConversationId);
+        scheduleMessagesRender(true);
+      }
     }
 
     function fileToDataUrl(file) {
@@ -7944,17 +8216,25 @@
     }
 
     async function uploadChatFile(file, folder) {
-      validateUploadFile(file, folder === 'sticker' ? 'sticker' : messageTypeForFile(file));
+      const messageType = folder === 'sticker' ? 'sticker' : messageTypeForFile(file);
+      validateUploadFile(file, messageType);
       const extension = (file.name?.split('.').pop() || extensionForMime(file.type)).replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin';
-      const path = `${state.user.id}/${folder}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+      const path = `${state.user.id}/${folder}/${Date.now()}-${randomId()}.${extension}`;
       await uploadStorageFile('chat-uploads', path, file, {
         cacheControl: '3600',
         upsert: true,
         contentType: file.type || mimeFromFileName(file.name),
-        timeoutMs: isMobileLayout() ? MOBILE_STORAGE_UPLOAD_TIMEOUT_MS : STORAGE_UPLOAD_TIMEOUT_MS
+        timeoutMs: uploadTimeoutForMedia(messageType)
       }, isMobileLayout() ? 1 : 3);
       const { data } = sb.storage.from('chat-uploads').getPublicUrl(path);
       return { path, publicUrl: data.publicUrl };
+    }
+
+    function uploadTimeoutForMedia(messageType) {
+      if (!isMobileLayout()) return STORAGE_UPLOAD_TIMEOUT_MS;
+      if (messageType === 'video') return 150000;
+      if (messageType === 'document' || messageType === 'audio') return 120000;
+      return 70000;
     }
 
     function validateUploadFile(file, messageType, options = {}) {
@@ -8168,7 +8448,14 @@
           state.recordingStream = null;
           try {
             const transcript = state.voiceTranscript.trim();
-            await sendMediaMessage(file, 'audio', Math.round((Date.now() - startedAt) / 1000), transcript ? { transcript } : {});
+            const metadata = {
+              ...(transcript ? { transcript } : {}),
+              client_id: randomId(),
+              conversation_id: state.currentConversation?.conversation_id
+            };
+            const replyToId = state.replyTo?.id || null;
+            sendMediaMessage(file, 'audio', Math.round((Date.now() - startedAt) / 1000), metadata, replyToId)
+              .catch((error) => toast(readableError(error), 'error'));
           } catch (error) {
             toast(readableError(error), 'error');
           }
@@ -8624,6 +8911,18 @@
 
     function sleep(ms) {
       return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function randomId() {
+      const cryptoApi = globalThis.crypto;
+      if (cryptoApi?.randomUUID) return cryptoApi.randomUUID();
+      const bytes = new Uint8Array(16);
+      if (cryptoApi?.getRandomValues) cryptoApi.getRandomValues(bytes);
+      else bytes.forEach((_, index) => { bytes[index] = Math.floor(Math.random() * 256); });
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0'));
+      return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
     }
 
     function withTimeout(promise, ms, message) {
