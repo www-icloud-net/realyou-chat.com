@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'realyou-chat-v2';
+const CACHE_VERSION = 'realyou-chat-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -40,6 +40,41 @@ self.addEventListener('fetch', (event) => {
   if (url.origin === self.location.origin || CDN_HOSTS.has(url.hostname)) {
     event.respondWith(staleWhileRevalidate(request));
   }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const appClient = allClients.find((client) => client.url.includes('index.html') || client.url.endsWith('/'));
+    if (appClient) {
+      await appClient.focus();
+      appClient.postMessage({ type: 'notification-click', data: event.notification.data || {} });
+      return;
+    }
+    await clients.openWindow('./');
+  })());
+});
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  event.waitUntil((async () => {
+    const title = data.title || 'RealYou Chat';
+    const options = {
+      body: data.body || 'New message',
+      icon: './favicon.svg',
+      badge: './favicon.svg',
+      tag: data.tag || 'realyou-message',
+      renotify: Boolean(data.renotify),
+      data: data.data || {}
+    };
+    return self.registration.showNotification(title, options);
+  })());
 });
 
 async function networkFirst(request, fallbackUrl) {
