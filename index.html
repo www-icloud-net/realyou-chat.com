@@ -4488,9 +4488,9 @@
       $('signupResendCodeBtn').addEventListener('click', () => requestSmsCodeForSignup({ resend: true }));
       $('resetPasswordForm').addEventListener('submit', handleResetPasswordSubmit);
       $('resetResendCodeBtn').addEventListener('click', () => requestResetCode({ resend: true }));
-      $('logoutBtn').addEventListener('click', signOut);
-      $('railLogoutBtn').addEventListener('click', signOut);
-      $('mobileLogoutBtn').addEventListener('click', signOut);
+      bindFastAction($('logoutBtn'), signOut);
+      bindFastAction($('railLogoutBtn'), signOut);
+      bindFastAction($('mobileLogoutBtn'), signOut);
       $('settingsBtn').addEventListener('click', openSettingsModal);
       $('settingsForm').addEventListener('submit', saveChatSettings);
       $('settingsResetBtn').addEventListener('click', resetChatSettings);
@@ -4516,13 +4516,13 @@
       $('currentUserAvatar').addEventListener('click', openProfileModal);
       $('railProfileBtn').addEventListener('click', openProfileModal);
       $('mobileProfileBtn').addEventListener('click', openProfileModal);
-      $('telegramDrawerProfileBtn').addEventListener('click', () => handleMobileDrawerAction('profile'));
-      $('telegramDrawerCurrentAccountBtn').addEventListener('click', () => handleMobileDrawerAction('profile'));
-      $('telegramDrawerThemeBtn').addEventListener('click', () => {
+      bindFastAction($('telegramDrawerProfileBtn'), () => handleMobileDrawerAction('profile'));
+      bindFastAction($('telegramDrawerCurrentAccountBtn'), () => handleMobileDrawerAction('profile'));
+      bindFastAction($('telegramDrawerThemeBtn'), () => {
         toggleTheme();
         renderMobileDrawer();
       });
-      $('telegramDrawerAddAccountBtn').addEventListener('click', () => {
+      bindFastAction($('telegramDrawerAddAccountBtn'), () => {
         setMobileDrawerOpen(false);
         signOut();
       });
@@ -4616,7 +4616,7 @@
         else setSidebarOpen(false);
       });
       document.querySelectorAll('[data-mobile-drawer-action]').forEach((button) => {
-        button.addEventListener('click', () => handleMobileDrawerAction(button.dataset.mobileDrawerAction));
+        bindFastAction(button, () => handleMobileDrawerAction(button.dataset.mobileDrawerAction));
       });
       window.addEventListener('resize', debounce(handleViewportLayout, 160));
       window.addEventListener('popstate', handleAppPopState);
@@ -4672,6 +4672,23 @@
         if (!$('messageActionMenu').contains(event.target) && !event.target.closest('[data-message-menu]')) {
           $('messageActionMenu').classList.add('hidden');
         }
+      });
+    }
+
+    function bindFastAction(element, handler) {
+      if (!element) return;
+      let handledAt = 0;
+      element.addEventListener('pointerup', (event) => {
+        if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+        handledAt = performance.now();
+        handler(event);
+      }, { passive: true });
+      element.addEventListener('click', (event) => {
+        if (performance.now() - handledAt < MOBILE_FAST_TAP_WINDOW_MS) {
+          event.preventDefault();
+          return;
+        }
+        handler(event);
       });
     }
 
@@ -5016,8 +5033,8 @@
       state.signingOut = true;
       closeModals();
       showAuth();
-      const cleanupPromise = cleanupApp();
       setTimeout(() => {
+        const cleanupPromise = cleanupApp();
         Promise.allSettled([
           withTimeout(cleanupPromise, shouldUseLiteRuntime() ? 900 : 1600, 'Cleanup timed out.'),
           withTimeout(sb.auth.signOut(), shouldUseLiteRuntime() ? 1800 : 3000, 'Sign out timed out.')
