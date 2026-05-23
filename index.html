@@ -3922,6 +3922,63 @@
         box-shadow: 0 8px 18px rgba(15,23,42,.16);
         backdrop-filter: none;
       }
+
+      html.low-resource .camera-capture-modal {
+        width: min(94vw, 430px);
+        height: auto;
+        max-height: calc(100dvh - max(22px, env(safe-area-inset-top)) - max(22px, env(safe-area-inset-bottom)));
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 12px;
+        margin: auto;
+        padding: 14px 12px max(14px, env(safe-area-inset-bottom));
+        overflow: hidden;
+        border: 1px solid #dbe4ef;
+        border-radius: 18px;
+        background: #fff;
+      }
+
+      html.low-resource .camera-capture-modal .modal-header {
+        min-height: 38px;
+        margin: 0;
+        padding: 0;
+      }
+
+      html.low-resource .camera-capture-stage {
+        width: 100%;
+        height: auto;
+        min-height: 0;
+        max-height: min(68dvh, 560px);
+        aspect-ratio: 3 / 4;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        border-radius: 12px;
+        background: #050815;
+      }
+
+      html.low-resource .camera-capture-stage video {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
+        object-position: center center;
+      }
+
+      html.low-resource .camera-capture-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin: 0;
+      }
+
+      html.low-resource .camera-capture-actions .btn {
+        min-width: 0;
+        min-height: 42px;
+        border-radius: 12px;
+        white-space: nowrap;
+      }
     }
   </style>
 </head>
