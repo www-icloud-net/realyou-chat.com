@@ -98,6 +98,8 @@
     button {
       cursor: pointer;
       border: 0;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .hidden {
@@ -2934,6 +2936,7 @@
       *::after {
         animation-duration: .001ms !important;
         animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
         scroll-behavior: auto !important;
       }
     }
@@ -3661,6 +3664,8 @@
     const PRESENCE_HEARTBEAT_MS = 45000;
     const PRESENCE_IDLE_MS = 90000;
     const SEARCH_CACHE_MS = 60000;
+    const MOBILE_FAST_TAP_WINDOW_MS = 700;
+    const ACCOUNT_DELETE_STORAGE_GRACE_MS = 900;
     const PUSH_PUBLIC_KEY = '';
     const MAX_UPLOAD_BYTES = {
       image: 8 * 1024 * 1024,
@@ -3749,6 +3754,9 @@
       messageLoadRequest: 0,
       shouldScrollAfterMessageRender: false,
       preserveMessageScrollOffset: null,
+      lastConversationTouchOpenAt: 0,
+      lastConversationTouchOpenId: '',
+      accountDeletionInProgress: false,
       appHistoryReady: false,
       appView: 'list',
       mediaRecorder: null,
@@ -4738,12 +4746,14 @@
       $('messagesWrap').classList.remove('hidden');
       $('composer').classList.toggle('hidden', isPendingConversationRequest(conversation));
       $('messages').innerHTML = loadingMarkup('Loading messages');
-      renderConversations();
+      if (!options.keepSidebar) setSidebarOpen(false);
+      if (isMobileLayout()) scheduleConversationRender();
+      else renderConversations();
       renderChatHeader();
       renderMessageRequestBar();
-      if (!options.keepSidebar) setSidebarOpen(false);
       pushAppView('chat', { conversationId });
-      requestAnimationFrame(() => $('messageInput').focus());
+      if (!isMobileLayout()) requestAnimationFrame(() => $('messageInput').focus());
+      await nextPaint();
       await cleanupConversationChannels();
       if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
       await loadMessages(conversationId, loadRequest);
@@ -5417,7 +5427,31 @@
       }).join('');
 
       list.querySelectorAll('[data-conversation-id]').forEach((button) => {
-        button.addEventListener('click', () => selectConversation(button.dataset.conversationId));
+        let touchStart = null;
+        button.addEventListener('pointerdown', (event) => {
+          if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+          touchStart = { x: event.clientX, y: event.clientY };
+        }, { passive: true });
+        button.addEventListener('pointerup', (event) => {
+          if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+          const moved = touchStart
+            ? Math.abs(event.clientX - touchStart.x) + Math.abs(event.clientY - touchStart.y)
+            : 0;
+          touchStart = null;
+          if (moved > 18) return;
+          state.lastConversationTouchOpenAt = performance.now();
+          state.lastConversationTouchOpenId = button.dataset.conversationId;
+          selectConversation(button.dataset.conversationId);
+        }, { passive: true });
+        button.addEventListener('click', (event) => {
+          const recentlyHandledTouch = state.lastConversationTouchOpenId === button.dataset.conversationId
+            && performance.now() - state.lastConversationTouchOpenAt < MOBILE_FAST_TAP_WINDOW_MS;
+          if (recentlyHandledTouch) {
+            event.preventDefault();
+            return;
+          }
+          selectConversation(button.dataset.conversationId);
+        });
       });
     }
 
@@ -6171,31 +6205,41 @@
     }
 
     async function deleteOwnAccount() {
-      if (!state.user) return;
+      if (!state.user || state.accountDeletionInProgress) return;
       const confirmed = confirm('Permanently delete this account? This cannot be undone.');
       if (!confirmed) return;
       const typed = prompt('Type DELETE to confirm permanent account deletion.');
       if (typed !== 'DELETE') return;
 
       const button = $('deleteAccountBtn');
+      const settingsKey = settingsStorageKey();
+      let deleted = false;
+      state.accountDeletionInProgress = true;
       button.disabled = true;
       button.textContent = 'Deleting...';
       try {
-        await deleteOwnStorageFiles().catch(() => {});
+        const storageCleanup = deleteOwnStorageFiles().catch(() => {});
         const { error } = await sb.rpc('delete_my_account');
         if (error) throw error;
+        deleted = true;
         closeModals();
-        showAuth();
-        localStorage.removeItem(settingsStorageKey());
-        await cleanupApp();
-        await sb.auth.signOut().catch(() => {});
+        localStorage.removeItem(settingsKey);
         showAuth();
         toast('Account deleted');
+        await Promise.race([cleanupApp(), sleep(ACCOUNT_DELETE_STORAGE_GRACE_MS)]).catch(() => {});
+        await Promise.race([storageCleanup, sleep(ACCOUNT_DELETE_STORAGE_GRACE_MS)]).catch(() => {});
+        state.user = null;
+        state.profile = null;
+        await sb.auth.signOut({ scope: 'local' }).catch(() => sb.auth.signOut().catch(() => {}));
+        showAuth();
       } catch (error) {
         toast(readableError(error), 'error');
       } finally {
-        button.disabled = false;
-        button.textContent = 'Delete account';
+        state.accountDeletionInProgress = false;
+        if (!deleted) {
+          button.disabled = false;
+          button.textContent = 'Delete account';
+        }
       }
     }
 
@@ -7843,6 +7887,10 @@
 
     function sleep(ms) {
       return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function nextPaint() {
+      return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }
 
     function sanitizeUsername(value) {
