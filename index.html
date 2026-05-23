@@ -2940,6 +2940,29 @@
         scroll-behavior: auto !important;
       }
     }
+
+    @media (max-width: 760px) {
+      html, body {
+        background: var(--bg-secondary);
+      }
+
+      body::before {
+        display: none;
+      }
+
+      #appScreen .conversation-item,
+      #appScreen .person-row,
+      .message-row,
+      .modal {
+        contain: layout paint;
+      }
+
+      #appScreen .conversation-item:hover,
+      #appScreen .person-row:hover,
+      .btn:hover {
+        transform: none !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -3666,6 +3689,13 @@
     const SEARCH_CACHE_MS = 60000;
     const MOBILE_FAST_TAP_WINDOW_MS = 700;
     const ACCOUNT_DELETE_STORAGE_GRACE_MS = 900;
+    const STORAGE_UPLOAD_TIMEOUT_MS = 30000;
+    const MOBILE_STORAGE_UPLOAD_TIMEOUT_MS = 18000;
+    const PROFILE_SAVE_TIMEOUT_MS = 15000;
+    const IMAGE_PROCESS_TIMEOUT_MS = 9000;
+    const PROFILE_AVATAR_MAX_SOURCE_BYTES = 18 * 1024 * 1024;
+    const PROFILE_AVATAR_MAX_BYTES = 950 * 1024;
+    const PROFILE_AVATAR_MAX_DIMENSION = 720;
     const PUSH_PUBLIC_KEY = '';
     const MAX_UPLOAD_BYTES = {
       image: 8 * 1024 * 1024,
@@ -3914,6 +3944,7 @@
       $('railProfileBtn').addEventListener('click', openProfileModal);
       $('mobileProfileBtn').addEventListener('click', openProfileModal);
       $('profileForm').addEventListener('submit', saveProfile);
+      $('profileAvatarFile').addEventListener('change', previewSelectedProfileAvatar);
       $('familyHubBtn').addEventListener('click', openFamilyModal);
       $('emergencyBtn').addEventListener('click', sendEmergencyAlert);
       $('familyRefreshBtn').addEventListener('click', loadFamilyDashboard);
@@ -6431,12 +6462,16 @@
           bio: $('profileBio').value.trim(),
           avatar_url: avatarUrl
         };
-        const { data, error } = await sb.from('profiles').update(updates).eq('id', state.user.id).select('*').single();
+        const { data, error } = await withTimeout(
+          sb.from('profiles').update(updates).eq('id', state.user.id).select('*').single(),
+          PROFILE_SAVE_TIMEOUT_MS,
+          'Profile save timed out. Check your connection and try again.'
+        );
         if (error) throw error;
         state.profile = data;
         state.profileCache.set(data.id, data);
         renderCurrentUser();
-        await loadConversations();
+        loadConversations().catch(() => {});
         closeModals();
         toast('Profile updated');
       } catch (error) {
@@ -6444,6 +6479,19 @@
       } finally {
         setButtonLoading(button, false, 'Save profile');
       }
+    }
+
+    function previewSelectedProfileAvatar() {
+      const file = $('profileAvatarFile').files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        toast('Choose an image file.', 'error');
+        $('profileAvatarFile').value = '';
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      $('profilePreviewAvatar').innerHTML = `<img src="${url}" alt="Profile image" />`;
+      $('profilePreviewAvatar').querySelector('img')?.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
     }
 
     function openGroupModal() {
@@ -7233,15 +7281,17 @@
 
     async function uploadImage(file, folder) {
       if (!file.type.startsWith('image/')) throw new Error('Choose an image file.');
-      validateUploadFile(file, 'image');
-      const prepared = await prepareFileForUpload(file, 'image');
+      const isAvatar = folder === 'profile' || folder === 'groups';
+      const prepared = isAvatar ? await prepareAvatarFile(file) : await prepareFileForUpload(file, 'image');
+      if (!isAvatar) validateUploadFile(prepared, 'image');
       const extension = (prepared.name.split('.').pop() || 'png').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'png';
       const path = `${state.user.id}/${folder}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
       await uploadWithRetry(sb.storage.from('avatars'), path, prepared, {
         cacheControl: '3600',
         upsert: true,
-        contentType: prepared.type
-      });
+        contentType: prepared.type,
+        timeoutMs: isMobileLayout() ? MOBILE_STORAGE_UPLOAD_TIMEOUT_MS : STORAGE_UPLOAD_TIMEOUT_MS
+      }, isMobileLayout() ? 2 : 3);
       const { data } = sb.storage.from('avatars').getPublicUrl(path);
       return data.publicUrl;
     }
@@ -7482,32 +7532,71 @@
     async function prepareFileForUpload(file, messageType) {
       if (!['image', 'sticker'].includes(messageType)) return file;
       if (file.type === 'image/gif' || file.size < 1400 * 1024) return file;
-      return compressImageFile(file, messageType === 'sticker' ? 512 : 1600, messageType === 'sticker' ? .82 : .78);
+      return withTimeout(
+        compressImageFile(file, messageType === 'sticker' ? 512 : 1600, messageType === 'sticker' ? .82 : .78),
+        IMAGE_PROCESS_TIMEOUT_MS,
+        'Image processing took too long. Choose a smaller image.'
+      );
     }
 
-    async function compressImageFile(file, maxDimension, quality) {
+    async function prepareAvatarFile(file) {
+      if (!file.type.startsWith('image/')) throw new Error('Choose an image file.');
+      if (file.size > PROFILE_AVATAR_MAX_SOURCE_BYTES) throw new Error('Profile image is too large. Choose a smaller image.');
+      const compressed = await withTimeout(
+        compressImageFile(file, PROFILE_AVATAR_MAX_DIMENSION, .72, { force: true, outputType: 'image/jpeg' }),
+        IMAGE_PROCESS_TIMEOUT_MS,
+        'Profile image processing took too long. Choose a smaller image.'
+      );
+      const prepared = compressed || file;
+      if (!ALLOWED_UPLOAD_MIME.image.test(prepared.type)) {
+        throw new Error('Choose a JPG, PNG, WEBP, or GIF image.');
+      }
+      if (prepared.size > PROFILE_AVATAR_MAX_BYTES) {
+        const smaller = await withTimeout(
+          compressImageFile(file, 520, .62, { force: true, outputType: 'image/jpeg' }),
+          IMAGE_PROCESS_TIMEOUT_MS,
+          'Profile image processing took too long. Choose a smaller image.'
+        );
+        if (smaller && ALLOWED_UPLOAD_MIME.image.test(smaller.type) && smaller.size <= PROFILE_AVATAR_MAX_BYTES) return smaller;
+        throw new Error('Profile image is still too large after compression. Choose a smaller image.');
+      }
+      return prepared;
+    }
+
+    async function compressImageFile(file, maxDimension, quality, options = {}) {
       if (!window.createImageBitmap) return file;
       const bitmap = await createImageBitmap(file).catch(() => null);
       if (!bitmap) return file;
+      const force = Boolean(options.force);
+      const outputType = options.outputType || 'image/jpeg';
       const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-      if (scale >= 1 && file.size < MAX_UPLOAD_BYTES.image * .65) return file;
+      if (!force && scale >= 1 && file.size < MAX_UPLOAD_BYTES.image * .65) return file;
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(bitmap.width * scale));
       canvas.height = Math.max(1, Math.round(bitmap.height * scale));
       const context = canvas.getContext('2d');
       context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, outputType, quality));
       bitmap.close?.();
-      if (!blob || blob.size >= file.size) return file;
+      if (!blob || (!force && blob.size >= file.size)) return file;
       return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
     }
 
     async function uploadWithRetry(bucketClient, path, file, options, attempts = 3) {
       let lastError;
+      const { timeoutMs = STORAGE_UPLOAD_TIMEOUT_MS, ...uploadOptions } = options || {};
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
-        const { error } = await bucketClient.upload(path, file, options);
-        if (!error) return;
-        lastError = error;
+        try {
+          const { error } = await withTimeout(
+            bucketClient.upload(path, file, uploadOptions),
+            timeoutMs,
+            'Upload timed out. Check your connection and try again.'
+          );
+          if (!error) return;
+          lastError = error;
+        } catch (error) {
+          lastError = error;
+        }
         if (attempt < attempts) await sleep(400 * attempt);
       }
       throw lastError;
@@ -7887,6 +7976,14 @@
 
     function sleep(ms) {
       return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function withTimeout(promise, ms, message) {
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message || 'Operation timed out.')), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
     }
 
     function nextPaint() {
