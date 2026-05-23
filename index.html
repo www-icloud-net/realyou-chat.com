@@ -171,6 +171,15 @@
       letter-spacing: -.075em;
     }
 
+    .brand-title-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
     .brand-title span {
       display: block;
       background: linear-gradient(135deg, #fff, #9defff 54%, #ffb8ed);
@@ -183,6 +192,21 @@
       background: linear-gradient(135deg, #24184f, #006f90 54%, #b41187);
       -webkit-background-clip: text;
       background-clip: text;
+    }
+
+    .brand-portrait {
+      flex: 0 0 clamp(118px, 24vw, 190px);
+      width: clamp(118px, 24vw, 190px);
+      max-width: 40%;
+      margin: 8px -4px 0 0;
+      pointer-events: none;
+    }
+
+    .brand-portrait svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      overflow: visible;
     }
 
     .brand-copy {
@@ -3479,10 +3503,31 @@
       }
 
       html.low-resource .brand-title {
-        margin-top: 20px;
+        margin: 0;
         color: #fff;
-        font-size: clamp(34px, 11vw, 48px);
+        font-size: clamp(32px, 10vw, 46px);
         line-height: .95;
+      }
+
+      html.low-resource .brand-title span {
+        background: none;
+        -webkit-background-clip: border-box;
+        background-clip: border-box;
+        color: #08336d;
+        letter-spacing: -.065em;
+      }
+
+      html.low-resource .brand-title-row {
+        margin-top: 18px;
+        min-height: 128px;
+        align-items: center;
+      }
+
+      html.low-resource .brand-portrait {
+        flex-basis: clamp(122px, 42vw, 168px);
+        width: clamp(122px, 42vw, 168px);
+        max-width: 47%;
+        margin: 0 -6px 0 0;
       }
 
       html.low-resource .brand-copy,
@@ -3990,7 +4035,41 @@
       <div class="brand-panel">
         <div>
           <div class="brand-logo">RY</div>
-          <h1 class="brand-title"><span>RealYou</span><span>Chat</span></h1>
+          <div class="brand-title-row">
+            <h1 class="brand-title"><span>RealYou</span><span>Chat</span></h1>
+            <div class="brand-portrait" aria-hidden="true">
+              <svg viewBox="0 0 180 210" role="img">
+                <defs>
+                  <linearGradient id="portraitShirt" x1="30" y1="134" x2="142" y2="206" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#08336d"/>
+                    <stop offset="1" stop-color="#24c6dc"/>
+                  </linearGradient>
+                  <linearGradient id="portraitPhone" x1="111" y1="91" x2="155" y2="159" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#ffffff"/>
+                    <stop offset="1" stop-color="#dff1ff"/>
+                  </linearGradient>
+                </defs>
+                <g fill="none" fill-rule="evenodd">
+                  <path d="M21 164c16 22 47 35 77 31 37-5 62-30 61-67-1-30-20-55-50-62-30-8-69 5-87 32-15 23-16 45-1 66z" fill="#fff" opacity=".18"/>
+                  <path d="M55 130c-22 9-34 27-36 58h119c-2-32-14-50-37-58-9 8-17 12-24 12s-14-4-22-12z" fill="url(#portraitShirt)"/>
+                  <path d="M56 135c8 16 19 24 31 24 12 0 22-8 30-24-6-5-12-8-20-10H75c-8 2-14 5-19 10z" fill="#0d66c2" opacity=".35"/>
+                  <path d="M64 76c-1 20 9 40 25 41 17 1 29-17 31-38 2-24-7-42-26-44-19-2-29 16-30 41z" fill="#8b542d"/>
+                  <path d="M62 82c-6-24 5-48 27-54 19-5 39 5 45 22 5 15-3 28-15 34-2-18-11-28-27-30-13-1-23 8-30 28z" fill="#1e293b"/>
+                  <path d="M70 76c4-10 10-16 19-17 12-1 22 7 27 22-2 20-12 34-27 34-14-1-22-17-19-39z" fill="#a4653a"/>
+                  <path d="M80 91c7 7 16 8 25 0" stroke="#502b1b" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M80 77c2-2 5-2 8 0M101 77c3-2 6-2 9 0" stroke="#1f2937" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M51 143c-16 11-24 25-25 44h27c3-19 7-34 13-45l-15 1z" fill="#24c6dc" opacity=".9"/>
+                  <path d="M123 118l30-7c5-1 9 2 10 7l9 45c1 5-2 10-7 11l-31 7c-5 1-9-2-10-7l-9-45c-1-5 2-10 8-11z" fill="url(#portraitPhone)" stroke="#08336d" stroke-width="4"/>
+                  <path d="M130 129h27M133 142h19M136 155h23" stroke="#1682e6" stroke-width="4" stroke-linecap="round"/>
+                  <path d="M119 148c-4 14-13 23-27 27" stroke="#fff" stroke-opacity=".72" stroke-width="6" stroke-linecap="round"/>
+                  <path d="M137 22h27c8 0 14 6 14 14v16c0 8-6 14-14 14h-9l-15 13 4-13h-7c-8 0-14-6-14-14V36c0-8 6-14 14-14z" fill="#fff"/>
+                  <path d="M141 42h19M141 52h11" stroke="#1682e6" stroke-width="4" stroke-linecap="round"/>
+                  <circle cx="34" cy="53" r="18" fill="#fff" opacity=".92"/>
+                  <path d="M27 52l6 6 13-15" stroke="#1682e6" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+                </g>
+              </svg>
+            </div>
+          </div>
           <p class="brand-copy">Secure real-time conversations with direct messages, groups, presence, read receipts, and a polished interface designed for daily communication.</p>
         </div>
         <div class="floating-cards" aria-hidden="true">
