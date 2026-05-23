@@ -4021,10 +4021,10 @@
     const MOBILE_FAST_TAP_WINDOW_MS = 700;
     const ACCOUNT_DELETE_STORAGE_GRACE_MS = 900;
     const STORAGE_UPLOAD_TIMEOUT_MS = 30000;
-    const MOBILE_STORAGE_UPLOAD_TIMEOUT_MS = 7000;
+    const MOBILE_STORAGE_UPLOAD_TIMEOUT_MS = 45000;
     const PROFILE_SAVE_TIMEOUT_MS = 15000;
     const MEDIA_SEND_TIMEOUT_MS = 45000;
-    const MOBILE_MEDIA_SEND_TIMEOUT_MS = 11000;
+    const MOBILE_MEDIA_SEND_TIMEOUT_MS = 60000;
     const IMAGE_PROCESS_TIMEOUT_MS = 9000;
     const PROFILE_AVATAR_MAX_SOURCE_BYTES = 18 * 1024 * 1024;
     const PROFILE_AVATAR_MAX_BYTES = 950 * 1024;
@@ -7763,7 +7763,7 @@
         state.pendingPreviewFile = null;
         closeModals();
       } catch (error) {
-        if (prepared && (isMobileLayout() || isOfflineSendError(error))) {
+        if (prepared && isOfflineSendError(error)) {
           try {
             await queueOfflineMedia(prepared, messageType, null, { client_id: clientId });
             state.pendingPreviewFile = null;
@@ -8052,10 +8052,13 @@
     }
 
     async function uploadStorageFile(bucket, path, file, options, attempts = 3) {
-      if (isMobileLayout()) {
-        return uploadWithDirectFetch(bucket, path, file, options, attempts);
+      const bucketClient = sb.storage.from(bucket);
+      try {
+        return await uploadWithRetry(bucketClient, path, file, options, attempts);
+      } catch (error) {
+        if (!isMobileLayout()) throw error;
+        return uploadWithDirectFetch(bucket, path, file, options, 1);
       }
-      return uploadWithRetry(sb.storage.from(bucket), path, file, options, attempts);
     }
 
     async function uploadWithDirectFetch(bucket, path, file, options = {}, attempts = 2) {
