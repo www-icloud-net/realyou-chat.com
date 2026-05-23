@@ -3126,11 +3126,12 @@
         height: 48px;
         padding-left: 48px;
         font-size: 16px;
-        color: #f5f8fb;
+        color: #111827;
+        caret-color: #111827;
       }
 
       #appScreen .search-wrap .input::placeholder {
-        color: #8795a6;
+        color: #6b7280;
       }
 
       #appScreen .search-icon {
@@ -4218,6 +4219,7 @@
     const MESSAGE_PAGE_SIZE = 50;
     const MOBILE_MESSAGE_PAGE_SIZE = 35;
     const LITE_MESSAGE_PAGE_SIZE = 24;
+    const LITE_CONVERSATION_RENDER_LIMIT = 80;
     const MAX_RENDERED_MESSAGES = 260;
     const MESSAGE_CACHE_LIMIT = 80;
     const MESSAGE_LOAD_TIMEOUT_MS = 9000;
@@ -4309,6 +4311,7 @@
       replyTo: null,
       selectedMessageId: null,
       pendingPreviewFile: null,
+      pendingTextMessages: new Map(),
       pendingMediaMessages: new Map(),
       pendingMediaPreviewUrls: new Map(),
       offlineMediaOutbox: [],
@@ -4324,6 +4327,8 @@
       typingChannel: null,
       callChannel: null,
       typingTimer: null,
+      lastTypingBroadcastAt: 0,
+      lastTypingState: null,
       listReloadTimer: null,
       presenceHeartbeatTimer: null,
       lastPresenceTrackAt: 0,
@@ -4365,6 +4370,8 @@
       cameraCaptureFacingMode: 'environment',
       offlineOutbox: [],
       syncingOutbox: false,
+      signingOut: false,
+      bootingUserId: null,
       familyCircles: [],
       selectedFamilyCircleId: null,
       familyDashboard: null,
@@ -4439,9 +4446,11 @@
 
       sb.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
+          if (state.signingOut) return;
           await bootApp(session.user);
         }
         if (event === 'SIGNED_OUT') {
+          if (state.signingOut) return;
           await cleanupApp();
           showAuth();
         }
@@ -4908,23 +4917,42 @@
     }
 
     async function bootApp(user) {
-      state.user = user;
-      state.bootedUserId = user.id;
-      loadUserSettings();
-      applyUserSettings();
-      loadOfflineOutbox();
-      showApp();
-      await ensureProfile();
-      syncProfilePreferences();
-      applyUserSettings();
-      await loadConversations();
-      await loadFamilyCircles();
-      await subscribePresence();
-      await subscribeConversationList();
-      renderCurrentUser();
-      renderConversations();
-      scheduleSecurityTimers();
-      await flushOfflineOutbox();
+      if (!user || state.signingOut) return;
+      if (state.bootingUserId === user.id) return;
+      if (state.bootedUserId === user.id && state.user?.id === user.id && !$('appScreen').classList.contains('hidden')) return;
+      state.bootingUserId = user.id;
+      try {
+        state.user = user;
+        state.bootedUserId = user.id;
+        state.signingOut = false;
+        loadUserSettings();
+        applyUserSettings();
+        loadOfflineOutbox();
+        loadCachedConversations();
+        showApp();
+        if (state.conversations.length) scheduleConversationRender();
+        await ensureProfile();
+        syncProfilePreferences();
+        applyUserSettings();
+        await loadConversations();
+        renderCurrentUser();
+        renderConversations();
+        scheduleSecurityTimers();
+        if (shouldUseLiteRuntime()) {
+          setTimeout(() => subscribePresence().catch(() => {}), 900);
+          setTimeout(() => subscribeConversationList().catch(() => {}), 1200);
+          setTimeout(() => loadFamilyCircles().catch(() => {}), 1400);
+          setTimeout(() => flushOfflineOutbox().catch(() => {}), 1600);
+          setTimeout(() => flushOfflineMediaOutbox().catch(() => {}), 1800);
+        } else {
+          await loadFamilyCircles();
+          await subscribePresence();
+          await subscribeConversationList();
+          await flushOfflineOutbox();
+        }
+      } finally {
+        if (state.bootingUserId === user.id) state.bootingUserId = null;
+      }
     }
 
     async function ensureProfile() {
@@ -4984,18 +5012,26 @@
     }
 
     async function signOut() {
-      try {
-        await cleanupApp();
-        const { error } = await sb.auth.signOut();
-        if (error) throw error;
-      } catch (error) {
-        toast(readableError(error), 'error');
-      } finally {
-        showAuth();
-      }
+      if (state.signingOut) return;
+      state.signingOut = true;
+      closeModals();
+      showAuth();
+      const cleanupPromise = cleanupApp();
+      setTimeout(() => {
+        Promise.allSettled([
+          withTimeout(cleanupPromise, shouldUseLiteRuntime() ? 900 : 1600, 'Cleanup timed out.'),
+          withTimeout(sb.auth.signOut(), shouldUseLiteRuntime() ? 1800 : 3000, 'Sign out timed out.')
+        ]).finally(() => {
+          state.signingOut = false;
+          showAuth();
+        });
+      }, 0);
     }
 
     async function cleanupApp() {
+      const previousUserId = state.user?.id || null;
+      state.user = null;
+      state.profile = null;
       state.currentConversation = null;
       state.messages = [];
       state.messagesHasMore = false;
@@ -5005,8 +5041,10 @@
       state.conversations = [];
       state.onlineUsers.clear();
       state.typingUsers.clear();
+      state.profileCache.clear();
       state.searchCache.clear();
       state.messageCache.clear();
+      state.pendingTextMessages.clear();
       state.offlineOutbox = [];
       state.offlineMediaOutbox = [];
       state.familyCircles = [];
@@ -5016,6 +5054,8 @@
       state.syncingOutbox = false;
       state.replyTo = null;
       state.selectedMessageId = null;
+      state.lastTypingBroadcastAt = 0;
+      state.lastTypingState = null;
       state.appLocked = false;
       state.messageLoadRequest += 1;
       state.appHistoryReady = false;
@@ -5041,19 +5081,25 @@
       $('telegramDrawer').classList.add('hidden');
       $('telegramDrawer').setAttribute('aria-hidden', 'true');
       const channels = sb.getChannels ? sb.getChannels() : [];
-      await Promise.all(channels.map((channel) => sb.removeChannel(channel)));
+      await withTimeout(
+        Promise.allSettled(channels.map((channel) => sb.removeChannel(channel))),
+        shouldUseLiteRuntime() ? 700 : 1400,
+        'Realtime cleanup timed out.'
+      ).catch(() => {});
       state.messageChannel = null;
       state.listChannel = null;
       state.presenceChannel = null;
       state.typingChannel = null;
       state.callChannel = null;
       stopLocalMedia();
-      state.bootedUserId = null;
+      if (!previousUserId || state.bootedUserId === previousUserId) state.bootedUserId = null;
+      if (!previousUserId || state.bootingUserId === previousUserId) state.bootingUserId = null;
       renderHomeState();
     }
 
     async function loadConversations() {
       if (!state.user) return;
+      const requestUserId = state.user.id;
       let response;
       try {
         response = await withTimeout(
@@ -5065,6 +5111,7 @@
         scheduleConversationRender();
         return;
       }
+      if (!state.user || state.user.id !== requestUserId) return;
       const { data, error } = response;
       if (error) return;
       state.conversations = (data || []).map((conversation) => ({
@@ -5072,6 +5119,7 @@
         members: Array.isArray(conversation.members) ? conversation.members : []
       }));
       cacheConversationMembers();
+      saveConversationCache();
       scheduleConversationRender();
       if (state.currentConversation) {
         const refreshed = state.conversations.find((item) => item.conversation_id === state.currentConversation.conversation_id);
@@ -5135,7 +5183,11 @@
       const channel = state[key];
       if (!channel) return;
       state[key] = null;
-      await sb.removeChannel(channel).catch(() => {});
+      await withTimeout(
+        sb.removeChannel(channel),
+        shouldUseLiteRuntime() ? 600 : 1200,
+        'Realtime channel cleanup timed out.'
+      ).catch(() => {});
     }
 
     async function cleanupConversationChannels() {
@@ -5219,8 +5271,33 @@
       return `${OUTBOX_STORAGE_PREFIX}:media:${state.user?.id || 'guest'}`;
     }
 
+    function conversationCacheStorageKey() {
+      return `${OUTBOX_STORAGE_PREFIX}:conversations:${state.user?.id || 'guest'}`;
+    }
+
     function messageCacheStorageKey(conversationId) {
       return `${OUTBOX_STORAGE_PREFIX}:messages:${state.user?.id || 'guest'}:${conversationId}`;
+    }
+
+    function loadCachedConversations() {
+      if (!state.user) return;
+      try {
+        const saved = JSON.parse(localStorage.getItem(conversationCacheStorageKey()) || '[]');
+        if (!Array.isArray(saved)) return;
+        state.conversations = saved.map((conversation) => ({
+          ...conversation,
+          members: Array.isArray(conversation.members) ? conversation.members : []
+        }));
+        cacheConversationMembers();
+      } catch {}
+    }
+
+    function saveConversationCache() {
+      if (!state.user) return;
+      try {
+        const limit = shouldUseLiteRuntime() ? LITE_CONVERSATION_RENDER_LIMIT : 160;
+        localStorage.setItem(conversationCacheStorageKey(), JSON.stringify(state.conversations.slice(0, limit)));
+      } catch {}
     }
 
     function messagePageSize() {
@@ -5250,6 +5327,14 @@
       return navigator.connection || navigator.mozConnection || navigator.webkitConnection || null;
     }
 
+    function isAndroidRuntime() {
+      const ua = navigator.userAgent || '';
+      const android = /Android/i.test(ua);
+      const webView = /; wv\)|Version\/\d+.*Chrome\/\d+.*Mobile Safari/i.test(ua);
+      const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches || navigator.standalone === true;
+      return android && (isMobileLayout() || webView || standalone);
+    }
+
     function shouldUseLiteRuntime() {
       const connection = connectionInfo();
       const effectiveType = String(connection?.effectiveType || '').toLowerCase();
@@ -5258,7 +5343,7 @@
       const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 2;
       const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
       const narrowMobile = isMobileLayout() && Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 430;
-      return saveData || slowNetwork || (isMobileLayout() && (lowMemory || lowCpu || narrowMobile));
+      return isAndroidRuntime() || saveData || slowNetwork || (isMobileLayout() && (lowMemory || lowCpu || narrowMobile));
     }
 
     function applyResourceProfile() {
@@ -5360,6 +5445,16 @@
       };
     }
 
+    function pendingMessageFromTextPayload(payload, createdAt = new Date().toISOString()) {
+      return {
+        id: `pending-${payload.metadata.client_id}`,
+        ...payload,
+        created_at: createdAt,
+        read_at: null,
+        pending: true
+      };
+    }
+
     function pendingClientId(message) {
       return message?.metadata?.client_id || (String(message?.id || '').startsWith('pending-') ? String(message.id).slice(8) : '');
     }
@@ -5392,7 +5487,10 @@
       const liveMedia = [...state.pendingMediaMessages.values()]
         .filter((message) => message.conversation_id === conversationId)
         .filter((message) => !confirmedClientIds.has(pendingClientId(message)));
-      const pending = upsertPendingMessages([...pendingText, ...pendingMedia, ...liveMedia]);
+      const liveText = [...state.pendingTextMessages.values()]
+        .filter((message) => message.conversation_id === conversationId)
+        .filter((message) => !confirmedClientIds.has(pendingClientId(message)));
+      const pending = upsertPendingMessages([...pendingText, ...pendingMedia, ...liveText, ...liveMedia]);
 
       state.messages = [
         ...state.messages.filter((message) => !message.pending),
@@ -5410,6 +5508,27 @@
       if (!clientId) return;
       revokePendingMediaPreview(clientId);
       state.pendingMediaMessages.delete(clientId);
+      state.messages = state.messages.filter((message) => pendingClientId(message) !== clientId);
+    }
+
+    function ensurePendingTextMessage(payload) {
+      const clientId = payload?.metadata?.client_id;
+      const conversationId = payload?.conversation_id;
+      if (!clientId || !conversationId || state.pendingTextMessages.has(clientId)) return;
+      const pending = pendingMessageFromTextPayload({
+        ...payload,
+        metadata: { ...(payload.metadata || {}), pending_state: 'sending' }
+      });
+      state.pendingTextMessages.set(clientId, pending);
+      if (state.currentConversation?.conversation_id === conversationId && state.activeMessageConversationId === conversationId) {
+        mergePendingMessages(conversationId);
+        scheduleMessagesRender(true);
+      }
+    }
+
+    function removePendingTextMessage(clientId) {
+      if (!clientId) return;
+      state.pendingTextMessages.delete(clientId);
       state.messages = state.messages.filter((message) => pendingClientId(message) !== clientId);
     }
 
@@ -5480,7 +5599,14 @@
 
     async function insertOrQueueMessage(payload) {
       const messagePayload = withClientId(payload);
-      if (!navigator.onLine) return queueOfflineMessage(messagePayload);
+      if (!messagePayload.media_url) ensurePendingTextMessage(messagePayload);
+      if (!navigator.onLine) {
+        removePendingTextMessage(messagePayload.metadata?.client_id);
+        return queueOfflineMessage({
+          ...messagePayload,
+          metadata: { ...(messagePayload.metadata || {}), pending_state: 'queued' }
+        });
+      }
 
       try {
         const { data, error } = await withTimeout(
@@ -5490,6 +5616,7 @@
         );
         if (error) throw error;
         const clientId = messagePayload.metadata.client_id;
+        if (clientId) removePendingTextMessage(clientId);
         if (data && state.currentConversation?.conversation_id === data.conversation_id && state.activeMessageConversationId === data.conversation_id) {
           if (clientId) removePendingMediaMessage(clientId);
           state.messages = mergeMessageArrays(state.messages, [data]);
@@ -5500,7 +5627,14 @@
         }
         return { queued: false, clientId, message: data };
       } catch (error) {
-        if (isOfflineSendError(error)) return queueOfflineMessage(messagePayload);
+        if (isOfflineSendError(error)) {
+          removePendingTextMessage(messagePayload.metadata?.client_id);
+          return queueOfflineMessage({
+            ...messagePayload,
+            metadata: { ...(messagePayload.metadata || {}), pending_state: 'queued' }
+          });
+        }
+        removePendingTextMessage(messagePayload.metadata?.client_id);
         throw error;
       }
     }
@@ -6277,7 +6411,7 @@
       if (!state.currentConversation) return;
       broadcastTyping(true);
       clearTimeout(state.typingTimer);
-      state.typingTimer = setTimeout(() => broadcastTyping(false), 2000);
+      state.typingTimer = setTimeout(() => broadcastTyping(false), shouldUseLiteRuntime() ? 3200 : 2000);
     }
 
     function resizeComposerInput() {
@@ -6286,9 +6420,15 @@
       input.style.height = Math.min(input.scrollHeight, 78) + 'px';
     }
 
-    async function broadcastTyping(isTyping) {
+    function broadcastTyping(isTyping) {
       if (!state.typingChannel || !state.currentConversation) return;
-      await state.typingChannel.send({
+      const now = performance.now();
+      const throttleMs = shouldUseLiteRuntime() ? 2400 : 900;
+      if (isTyping && state.lastTypingState === true && now - state.lastTypingBroadcastAt < throttleMs) return;
+      if (!isTyping && state.lastTypingState === false && now - state.lastTypingBroadcastAt < 900) return;
+      state.lastTypingState = isTyping;
+      state.lastTypingBroadcastAt = now;
+      state.typingChannel.send({
         type: 'broadcast',
         event: 'typing',
         payload: {
@@ -6297,7 +6437,7 @@
           conversation_id: state.currentConversation.conversation_id,
           typing: isTyping
         }
-      });
+      }).catch(() => {});
     }
 
     function renderCurrentUser() {
@@ -6345,7 +6485,11 @@
         return;
       }
 
-      list.innerHTML = visibleConversations.map((conversation) => {
+      const renderedConversations = shouldUseLiteRuntime()
+        ? visibleConversations.slice(0, LITE_CONVERSATION_RENDER_LIMIT)
+        : visibleConversations;
+
+      list.innerHTML = renderedConversations.map((conversation) => {
         const meta = conversationMeta(conversation);
         const active = state.currentConversation?.conversation_id === conversation.conversation_id;
         const lastTime = conversation.last_message_at ? timeAgo(conversation.last_message_at) : '';
