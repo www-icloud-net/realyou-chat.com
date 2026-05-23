@@ -2051,6 +2051,34 @@
       font-size: 14px;
     }
 
+    .camera-capture-modal {
+      width: min(520px, 96vw);
+    }
+
+    .camera-capture-stage {
+      position: relative;
+      overflow: hidden;
+      border-radius: 18px;
+      background: #050815;
+      aspect-ratio: 3 / 4;
+      max-height: min(66dvh, 620px);
+    }
+
+    .camera-capture-stage video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      background: #050815;
+    }
+
+    .camera-capture-actions {
+      display: grid;
+      grid-template-columns: minmax(0, .8fr) minmax(0, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
     .member-row {
       grid-template-columns: auto 1fr auto;
       align-items: center;
@@ -3015,6 +3043,15 @@
         text-align: left;
       }
 
+      .telegram-menu-list .telegram-drawer-logout {
+        margin-top: 6px;
+        color: #ff6b7c;
+      }
+
+      .telegram-menu-list .telegram-drawer-logout span {
+        color: #ff6b7c;
+      }
+
       .telegram-account-row:active,
       .telegram-icon-button:active,
       .telegram-menu-list button:active {
@@ -3034,6 +3071,8 @@
         transform: translateX(-102%);
         border-right: 0;
         border-radius: 0;
+        background: #1f2a36;
+        color: #f5f8fb;
         box-shadow: 0 20px 46px rgba(0,0,0,.22);
         pointer-events: auto;
       }
@@ -3053,6 +3092,8 @@
 
       #appScreen .sidebar-top {
         padding: max(18px, env(safe-area-inset-top)) 16px 10px;
+        background: #263445;
+        border-bottom: 0;
       }
 
       #appScreen .chat-list-header {
@@ -3063,17 +3104,39 @@
 
       #appScreen .chat-list-header h1 {
         font-size: 28px;
+        color: #fff;
+        font-weight: 750;
+      }
+
+      #appScreen .wa-header-btn {
+        color: #f5f8fb;
+      }
+
+      #appScreen .user-strip {
+        display: none;
+      }
+
+      #appScreen .search-wrap {
+        background: #17202b;
+        border-color: rgba(255,255,255,.08);
+        box-shadow: none;
       }
 
       #appScreen .search-wrap .input {
         height: 48px;
         padding-left: 48px;
         font-size: 16px;
+        color: #f5f8fb;
+      }
+
+      #appScreen .search-wrap .input::placeholder {
+        color: #8795a6;
       }
 
       #appScreen .search-icon {
         left: 18px;
         font-size: 22px;
+        color: #8795a6;
       }
 
       #appScreen .sidebar-tabs {
@@ -3086,32 +3149,74 @@
         min-height: 40px;
         padding: 0 14px;
         font-size: 15px;
+        color: #d8e2ee;
+        background: #17202b;
+        border-color: rgba(255,255,255,.08);
+      }
+
+      #appScreen .sidebar-tab.active {
+        background: #69a9e8;
+        color: #fff;
+        border-color: #69a9e8;
       }
 
       #appScreen .conversation-list {
-        padding: 4px 8px 8px;
+        padding: 4px 0 8px;
+        background: #1f2a36;
       }
 
       #appScreen .conversation-item {
-        grid-template-columns: 48px minmax(0,1fr) auto;
-        min-height: 62px;
-        padding: 8px;
+        grid-template-columns: 62px minmax(0,1fr) auto;
+        min-height: 76px;
+        padding: 8px 16px;
+        border-radius: 0;
+        border: 0;
+        border-bottom: 1px solid rgba(255,255,255,.045);
+        background: transparent;
+      }
+
+      #appScreen .conversation-item.active,
+      #appScreen .conversation-item:hover {
+        background: rgba(105,169,232,.13);
+      }
+
+      #appScreen .conversation-title {
+        color: #f5f8fb;
+        font-size: 17px;
+        font-weight: 760;
+      }
+
+      #appScreen .conversation-preview,
+      #appScreen .conversation-meta {
+        color: #9aa8b9;
       }
 
       #appScreen .conversation-item .avatar,
       #appScreen .person-row .avatar {
-        width: 46px;
-        height: 46px;
+        width: 54px;
+        height: 54px;
       }
 
       #appScreen .sidebar-bottom {
-        grid-template-columns: minmax(0, 1fr) 52px;
+        grid-template-columns: 1fr;
         align-items: center;
-        padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+        padding: 10px 14px max(12px, env(safe-area-inset-bottom));
+        background: #1f2a36;
+        border-top: 1px solid rgba(255,255,255,.06);
       }
 
       #appScreen .mobile-logout-btn {
-        display: inline-flex;
+        display: none;
+      }
+
+      #appScreen .sidebar-bottom .btn {
+        min-height: 48px;
+        border-radius: 999px;
+        background: #69a9e8;
+        color: #fff;
+      }
+
+      #appScreen .mobile-logout-btn {
         width: 52px;
         min-width: 52px;
         height: 46px;
@@ -3213,6 +3318,28 @@
         left: 8px;
         bottom: 70px;
         width: min(262px, calc(100vw - 16px));
+      }
+
+      .camera-capture-modal {
+        width: 100vw;
+        max-width: none;
+        height: 100dvh;
+        max-height: none;
+        border: 0;
+        border-radius: 0;
+        padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+        background: #050815;
+      }
+
+      .camera-capture-stage {
+        height: min(72dvh, 720px);
+        max-height: none;
+        aspect-ratio: auto;
+        border-radius: 20px;
+      }
+
+      .camera-capture-actions {
+        grid-template-columns: 1fr 1fr;
       }
 
       #filePreviewModal {
@@ -3392,6 +3519,7 @@
       <button type="button" data-mobile-drawer-action="settings"><span data-icon="settings"></span><strong>Settings</strong></button>
       <button type="button" data-mobile-drawer-action="family"><span data-icon="shield-heart"></span><strong>Family</strong></button>
       <button type="button" data-mobile-drawer-action="invite"><span data-icon="user-plus"></span><strong>Invite Friends</strong></button>
+      <button class="telegram-drawer-logout" type="button" data-mobile-drawer-action="logout"><span data-icon="log-out"></span><strong>Log out</strong></button>
     </div>
   </aside>
 
@@ -3807,6 +3935,20 @@
       <div id="mediaGalleryGrid" class="media-grid"></div>
     </section>
 
+    <section id="cameraCaptureModal" class="modal hidden camera-capture-modal" aria-modal="true" role="dialog">
+      <div class="modal-header">
+        <h2 class="modal-title">Camera</h2>
+        <button id="cameraCloseBtn" class="btn icon" type="button"><span data-icon="x"></span></button>
+      </div>
+      <div class="camera-capture-stage">
+        <video id="cameraCaptureVideo" autoplay playsinline muted></video>
+      </div>
+      <div class="camera-capture-actions">
+        <button id="cameraSwitchBtn" class="btn" type="button"><span data-icon="refresh-cw"></span>Switch</button>
+        <button id="cameraShotBtn" class="btn primary" type="button"><span data-icon="camera"></span>Capture</button>
+      </div>
+    </section>
+
     <section id="familyModal" class="modal wide hidden" aria-modal="true" role="dialog">
       <div class="modal-header">
         <h2 class="modal-title">Family</h2>
@@ -4182,6 +4324,8 @@
       currentVideoDeviceIndex: 0,
       currentVideoDeviceId: null,
       currentFacingMode: 'user',
+      cameraCaptureStream: null,
+      cameraCaptureFacingMode: 'environment',
       offlineOutbox: [],
       syncingOutbox: false,
       familyCircles: [],
@@ -4387,7 +4531,7 @@
       $('messages').addEventListener('scroll', handleMessagesScroll, { passive: true });
       $('emojiBtn').addEventListener('click', () => $('emojiPicker').classList.toggle('hidden'));
       $('attachBtn').addEventListener('click', () => $('attachmentMenu').classList.toggle('hidden'));
-      $('cameraBtn').addEventListener('click', () => $('cameraInput').click());
+      $('cameraBtn').addEventListener('click', openDeviceCamera);
       $('recordBtn').addEventListener('click', toggleAudioRecording);
       $('fileUploadInput').addEventListener('change', (event) => handleFileInput(event, 'file'));
       $('mediaUploadInput').addEventListener('change', (event) => handleFileInput(event, 'media'));
@@ -4395,6 +4539,9 @@
       $('stickerUploadInput').addEventListener('change', (event) => handleFileInput(event, 'sticker'));
       $('cameraInput').addEventListener('change', (event) => handleFileInput(event, 'camera'));
       $('contactShareInput').addEventListener('change', importContactCardForShare);
+      $('cameraCloseBtn').addEventListener('click', closeCameraCapture);
+      $('cameraSwitchBtn').addEventListener('click', switchDeviceCamera);
+      $('cameraShotBtn').addEventListener('click', captureDeviceCameraShot);
       $('audioCallBtn').addEventListener('click', () => startCall('audio'));
       $('videoCallBtn').addEventListener('click', () => startCall('video'));
       $('chatSearchBtn').addEventListener('click', () => $('peopleSearchInput').focus());
@@ -7958,6 +8105,97 @@
       return data.publicUrl;
     }
 
+    async function openDeviceCamera() {
+      if (!state.currentConversation) {
+        toast('Open a conversation first.', 'error');
+        return;
+      }
+      $('attachmentMenu').classList.add('hidden');
+      if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) {
+        $('cameraInput').click();
+        return;
+      }
+      openModal('cameraCaptureModal');
+      try {
+        await startCameraCapture(state.cameraCaptureFacingMode || 'environment');
+      } catch (error) {
+        stopCameraCapture();
+        closeModals();
+        $('cameraInput').click();
+      }
+    }
+
+    async function startCameraCapture(facingMode = 'environment') {
+      stopCameraCapture();
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 1920 }
+        }
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      state.cameraCaptureStream = stream;
+      state.cameraCaptureFacingMode = facingMode;
+      const video = $('cameraCaptureVideo');
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+    }
+
+    function stopCameraCapture() {
+      state.cameraCaptureStream?.getTracks().forEach((track) => track.stop());
+      state.cameraCaptureStream = null;
+      const video = $('cameraCaptureVideo');
+      if (video) video.srcObject = null;
+    }
+
+    function closeCameraCapture() {
+      stopCameraCapture();
+      closeModals();
+    }
+
+    async function switchDeviceCamera() {
+      if (!state.cameraCaptureStream) return;
+      const next = state.cameraCaptureFacingMode === 'environment' ? 'user' : 'environment';
+      const button = $('cameraSwitchBtn');
+      setButtonLoading(button, true, 'Switch');
+      try {
+        await startCameraCapture(next);
+      } catch (error) {
+        await startCameraCapture(state.cameraCaptureFacingMode || 'environment').catch(() => {});
+      } finally {
+        button.disabled = false;
+        button.innerHTML = '<span data-icon="refresh-cw"></span>Switch';
+        hydrateIcons(button);
+      }
+    }
+
+    async function captureDeviceCameraShot() {
+      const video = $('cameraCaptureVideo');
+      if (!state.cameraCaptureStream || !video.videoWidth || !video.videoHeight) return;
+      const button = $('cameraShotBtn');
+      setButtonLoading(button, true, 'Capture');
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', .86));
+        if (!blob) throw new Error('Camera capture failed.');
+        const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        stopCameraCapture();
+        openFilePreview(file, 'image');
+      } catch (error) {
+        toast(readableError(error), 'error');
+      } finally {
+        button.disabled = false;
+        button.innerHTML = '<span data-icon="camera"></span>Capture';
+        hydrateIcons(button);
+      }
+    }
+
     async function handleFileInput(event, source) {
       const file = event.target.files?.[0];
       event.target.value = '';
@@ -8048,7 +8286,7 @@
         return;
       }
       if (action === 'camera') {
-        $('cameraInput').click();
+        openDeviceCamera();
         return;
       }
       if (action === 'audio') {
@@ -8496,6 +8734,7 @@
     }
 
     function openModal(id) {
+      if (id !== 'cameraCaptureModal') stopCameraCapture();
       $('modalBackdrop').classList.remove('hidden');
       $('signupModal').classList.add('hidden');
       $('resetPasswordModal').classList.add('hidden');
@@ -8503,6 +8742,7 @@
       $('settingsModal').classList.add('hidden');
       $('filePreviewModal').classList.add('hidden');
       $('mediaGalleryModal').classList.add('hidden');
+      $('cameraCaptureModal').classList.add('hidden');
       $('familyModal').classList.add('hidden');
       $('chatInfoModal').classList.add('hidden');
       $('groupModal').classList.add('hidden');
@@ -8521,6 +8761,7 @@
       $('settingsModal').classList.add('hidden');
       $('filePreviewModal').classList.add('hidden');
       $('mediaGalleryModal').classList.add('hidden');
+      $('cameraCaptureModal').classList.add('hidden');
       $('familyModal').classList.add('hidden');
       $('chatInfoModal').classList.add('hidden');
       $('groupModal').classList.add('hidden');
@@ -8528,6 +8769,7 @@
       $('callModal').classList.remove('video-call-active');
       $('pollModal').classList.add('hidden');
       $('eventModal').classList.add('hidden');
+      stopCameraCapture();
     }
 
     function setSidebarOpen(open) {
@@ -8625,6 +8867,9 @@
           break;
         case 'invite':
           shareInvite();
+          break;
+        case 'logout':
+          signOut();
           break;
         default:
           break;
