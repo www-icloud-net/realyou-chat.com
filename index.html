@@ -1949,6 +1949,73 @@
       border-radius: 8px;
     }
 
+    .message-bubble .media-tile img,
+    .message-bubble .media-tile video {
+      aspect-ratio: auto;
+      height: auto;
+      max-height: min(46vh, 360px);
+      object-fit: contain;
+      background: rgba(0,0,0,.08);
+    }
+
+    #filePreviewModal {
+      width: min(520px, 100%);
+    }
+
+    #filePreviewBody {
+      max-height: min(62vh, 520px);
+      overflow-y: auto;
+      grid-template-columns: 1fr;
+      margin-bottom: 18px;
+    }
+
+    .file-preview-tile {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text-primary);
+      content-visibility: visible;
+      contain: none;
+    }
+
+    .file-preview-tile img,
+    .file-preview-tile video {
+      width: auto;
+      max-width: 100%;
+      height: auto;
+      max-height: min(54vh, 470px);
+      aspect-ratio: auto;
+      object-fit: contain;
+      justify-self: center;
+      border-radius: 14px;
+      background: rgba(0,0,0,.08);
+    }
+
+    .file-preview-tile video {
+      width: 100%;
+    }
+
+    .file-preview-doc {
+      max-width: 100%;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--glass);
+      overflow-wrap: anywhere;
+    }
+
+    .file-preview-name {
+      display: block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
     .member-row {
       grid-template-columns: auto 1fr auto;
       align-items: center;
@@ -3113,6 +3180,24 @@
         width: min(262px, calc(100vw - 16px));
       }
 
+      #filePreviewModal {
+        width: min(92vw, 460px);
+        max-height: min(82dvh, 720px);
+        padding: 22px;
+        overflow: hidden;
+      }
+
+      #filePreviewBody {
+        max-height: min(56dvh, 520px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+
+      .file-preview-tile img,
+      .file-preview-tile video {
+        max-height: min(50dvh, 480px);
+      }
+
       .auth-card,
       .modal,
       .modal-backdrop,
@@ -3126,8 +3211,7 @@
     @supports (content-visibility: auto) {
       .message-row,
       .conversation-item,
-      .person-row,
-      .media-tile {
+      .person-row {
         content-visibility: auto;
         contain-intrinsic-size: 72px;
       }
@@ -3329,6 +3413,7 @@
         <div class="sidebar-section-title">Phone contacts</div>
         <div class="contact-tools">
           <button id="importContactsBtn" class="btn full" type="button">Import phone contacts</button>
+          <input id="vcfContactsInput" class="hidden" type="file" accept=".vcf,text/vcard,text/x-vcard" />
           <textarea id="manualContactsInput" class="textarea compact" placeholder="Phone numbers"></textarea>
           <button id="manualContactsBtn" class="btn full" type="button">Find registered contacts</button>
         </div>
@@ -3938,6 +4023,7 @@
     const STORAGE_UPLOAD_TIMEOUT_MS = 30000;
     const MOBILE_STORAGE_UPLOAD_TIMEOUT_MS = 18000;
     const PROFILE_SAVE_TIMEOUT_MS = 15000;
+    const MEDIA_SEND_TIMEOUT_MS = 45000;
     const IMAGE_PROCESS_TIMEOUT_MS = 9000;
     const PROFILE_AVATAR_MAX_SOURCE_BYTES = 18 * 1024 * 1024;
     const PROFILE_AVATAR_MAX_BYTES = 950 * 1024;
@@ -4032,6 +4118,7 @@
       preserveMessageScrollOffset: null,
       lastConversationTouchOpenAt: 0,
       lastConversationTouchOpenId: '',
+      lastPreviewSendTouchAt: 0,
       accountDeletionInProgress: false,
       mobileDrawerOpen: false,
       appHistoryReady: false,
@@ -4185,7 +4272,14 @@
       $('backupNowBtn').addEventListener('click', exportAccountBackup);
       $('unlockForm').addEventListener('submit', unlockApp);
       $('filePreviewCancelBtn').addEventListener('click', () => closeModals());
-      $('filePreviewSendBtn').addEventListener('click', sendPreviewFile);
+      $('filePreviewSendBtn').addEventListener('pointerup', handlePreviewSendPointer, { passive: true });
+      $('filePreviewSendBtn').addEventListener('click', (event) => {
+        if (performance.now() - state.lastPreviewSendTouchAt < MOBILE_FAST_TAP_WINDOW_MS) {
+          event.preventDefault();
+          return;
+        }
+        sendPreviewFile();
+      });
       $('chatInfoForm').addEventListener('submit', saveChatInfo);
       $('leaveGroupBtn').addEventListener('click', leaveCurrentGroup);
       $('themeToggleBtn').addEventListener('click', toggleTheme);
@@ -4246,6 +4340,7 @@
       $('unreadTabBtn').addEventListener('click', () => setConversationFilter('unread'));
       $('favoritesTabBtn').addEventListener('click', () => setConversationFilter('favorites'));
       $('importContactsBtn').addEventListener('click', importPhoneContacts);
+      $('vcfContactsInput').addEventListener('change', importVcfContacts);
       $('manualContactsBtn').addEventListener('click', searchManualContacts);
       $('composer').addEventListener('submit', sendMessage);
       $('messageInput').addEventListener('input', handleTypingInput);
@@ -4970,7 +5065,11 @@
       if (!navigator.onLine) return queueOfflineMessage(messagePayload);
 
       try {
-        const { error } = await sb.from('messages').insert(messagePayload);
+        const { error } = await withTimeout(
+          sb.from('messages').insert(messagePayload),
+          isMobileLayout() ? 15000 : 24000,
+          'Message send timed out. It will be retried when your connection is stable.'
+        );
         if (error) throw error;
         return { queued: false, clientId: messagePayload.metadata.client_id };
       } catch (error) {
@@ -6317,15 +6416,36 @@
     async function importPhoneContacts() {
       const results = $('contactResults');
       try {
-        if (!navigator.contacts?.select) {
-          results.innerHTML = emptyMarkup('Contact picker unavailable', '');
+        if (!navigator.contacts?.select || !window.isSecureContext) {
+          $('vcfContactsInput').click();
           return;
         }
-        const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+        results.innerHTML = loadingMarkup('Opening contacts');
+        const supported = await navigator.contacts.getProperties?.().catch(() => ['name', 'tel']);
+        if (Array.isArray(supported) && !supported.includes('tel')) {
+          $('vcfContactsInput').click();
+          return;
+        }
+        const fields = Array.isArray(supported) && supported.includes('name') ? ['name', 'tel'] : ['tel'];
+        const contacts = await navigator.contacts.select(fields, { multiple: true });
         const phones = contacts.flatMap((contact) => contact.tel || []);
         await searchRegisteredContacts(phones);
       } catch (error) {
         if (error?.name !== 'AbortError') results.innerHTML = emptyMarkup('Contacts unavailable', readableError(error));
+      }
+    }
+
+    async function importVcfContacts(event) {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      const results = $('contactResults');
+      try {
+        results.innerHTML = loadingMarkup('Matching contacts');
+        const text = await withTimeout(file.text(), 8000, 'Contact file could not be read.');
+        await searchRegisteredContacts(parseVcfPhones(text));
+      } catch (error) {
+        results.innerHTML = emptyMarkup('Contacts unavailable', readableError(error));
       }
     }
 
@@ -6336,7 +6456,7 @@
 
     async function searchRegisteredContacts(phones) {
       const results = $('contactResults');
-      const normalized = [...new Set(phones.map(normalizeContactPhone).filter(Boolean))];
+      const normalized = [...new Set(phones.flatMap(expandContactPhone).filter(Boolean))];
       if (!normalized.length) {
         results.innerHTML = emptyMarkup('No phone numbers', '');
         return;
@@ -6355,6 +6475,14 @@
       }
       state.searchCache.set(cacheKey, { at: Date.now(), data: data || [] });
       renderPeopleResults(results, data || [], startDirectChat);
+    }
+
+    function parseVcfPhones(text) {
+      return String(text || '')
+        .split(/\r?\n/)
+        .filter((line) => /^TEL/i.test(line))
+        .map((line) => line.slice(line.indexOf(':') + 1).trim())
+        .filter(Boolean);
     }
 
     function renderPeopleResults(container, users, clickHandler) {
@@ -7603,24 +7731,42 @@
       const safeName = escapeHtml(file.name || messageType);
       $('filePreviewBody').innerHTML =
         messageType === 'image' || messageType === 'sticker'
-          ? `<div class="media-tile"><img src="${url}" alt="${safeName}" /><span>${safeName}</span></div>`
+          ? `<div class="file-preview-tile"><img src="${url}" alt="${safeName}" /><span class="file-preview-name">${safeName}</span></div>`
           : messageType === 'video'
-            ? `<div class="media-tile"><video src="${url}" controls></video><span>${safeName}</span></div>`
-            : `<div class="media-tile"><strong>${safeName}</strong><span>${formatBytes(file.size || 0)}</span></div>`;
+            ? `<div class="file-preview-tile"><video src="${url}" controls></video><span class="file-preview-name">${safeName}</span></div>`
+            : `<div class="file-preview-doc"><strong>${safeName}</strong><span class="file-preview-name">${formatBytes(file.size || 0)}</span></div>`;
+      const previewMedia = $('filePreviewBody').querySelector('img, video');
+      previewMedia?.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+      previewMedia?.addEventListener('loadeddata', () => URL.revokeObjectURL(url), { once: true });
       openModal('filePreviewModal');
     }
 
     async function sendPreviewFile() {
       if (!state.pendingPreviewFile) return;
       const { file, messageType } = state.pendingPreviewFile;
+      const button = $('filePreviewSendBtn');
+      if (button.disabled) return;
+      setButtonLoading(button, true, 'Sending');
       try {
         const prepared = await prepareFileForUpload(file, messageType);
-        await sendMediaMessage(prepared, messageType);
+        await withTimeout(
+          sendMediaMessage(prepared, messageType),
+          MEDIA_SEND_TIMEOUT_MS,
+          'Sending timed out. Check your connection and try again.'
+        );
         state.pendingPreviewFile = null;
         closeModals();
       } catch (error) {
         toast(readableError(error), 'error');
+      } finally {
+        setButtonLoading(button, false, 'Send');
       }
+    }
+
+    function handlePreviewSendPointer(event) {
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      state.lastPreviewSendTouchAt = performance.now();
+      sendPreviewFile();
     }
 
     function handleAttachmentAction(action) {
@@ -7770,8 +7916,9 @@
       await uploadWithRetry(sb.storage.from('chat-uploads'), path, file, {
         cacheControl: '3600',
         upsert: true,
-        contentType: file.type || mimeFromFileName(file.name)
-      });
+        contentType: file.type || mimeFromFileName(file.name),
+        timeoutMs: isMobileLayout() ? MOBILE_STORAGE_UPLOAD_TIMEOUT_MS : STORAGE_UPLOAD_TIMEOUT_MS
+      }, isMobileLayout() ? 2 : 3);
       const { data } = sb.storage.from('chat-uploads').getPublicUrl(path);
       return { path, publicUrl: data.publicUrl };
     }
@@ -8455,6 +8602,32 @@
       const digits = cleaned.replace(/\D/g, '');
       if (digits.length < 7 || digits.length > 15) return '';
       return cleaned.startsWith('+') ? `+${digits}` : digits;
+    }
+
+    function expandContactPhone(value) {
+      const normalized = normalizeContactPhone(value);
+      if (!normalized) return [];
+      const results = new Set([normalized]);
+      const digits = normalized.replace(/\D/g, '');
+      const dialCode = currentUserDialCode();
+      if (dialCode && !String(normalized).startsWith('+')) {
+        const withoutLeadingZero = digits.replace(/^0+/, '');
+        if (withoutLeadingZero.length >= 7) results.add(`${dialCode}${withoutLeadingZero}`);
+      }
+      return [...results];
+    }
+
+    function currentUserDialCode() {
+      const phone = state.profile?.phone || state.user?.user_metadata?.phone_number || '';
+      const digits = normalizePhone(phone).replace(/\D/g, '');
+      if (!digits) return '';
+      const dialCodes = COUNTRY_CODES
+        .map(([, code]) => code)
+        .filter(Boolean)
+        .map((code) => code.replace(/\D/g, ''))
+        .sort((a, b) => b.length - a.length);
+      const match = dialCodes.find((code) => digits.startsWith(code));
+      return match ? `+${match}` : '';
     }
 
     function phoneToAuthEmail(phone) {
