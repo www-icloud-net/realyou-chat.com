@@ -4021,9 +4021,10 @@
     const MOBILE_FAST_TAP_WINDOW_MS = 700;
     const ACCOUNT_DELETE_STORAGE_GRACE_MS = 900;
     const STORAGE_UPLOAD_TIMEOUT_MS = 30000;
-    const MOBILE_STORAGE_UPLOAD_TIMEOUT_MS = 18000;
+    const MOBILE_STORAGE_UPLOAD_TIMEOUT_MS = 7000;
     const PROFILE_SAVE_TIMEOUT_MS = 15000;
     const MEDIA_SEND_TIMEOUT_MS = 45000;
+    const MOBILE_MEDIA_SEND_TIMEOUT_MS = 11000;
     const IMAGE_PROCESS_TIMEOUT_MS = 9000;
     const PROFILE_AVATAR_MAX_SOURCE_BYTES = 18 * 1024 * 1024;
     const PROFILE_AVATAR_MAX_BYTES = 950 * 1024;
@@ -5057,7 +5058,7 @@
 
     function isOfflineSendError(error) {
       const message = readableError(error).toLowerCase();
-      return !navigator.onLine || /failed to fetch|network|offline|internet|load failed|timeout/.test(message);
+      return !navigator.onLine || /failed to fetch|network|offline|internet|load failed|timeout|timed out|abort/.test(message);
     }
 
     async function insertOrQueueMessage(payload) {
@@ -7702,12 +7703,12 @@
       if (!isAvatar) validateUploadFile(prepared, 'image');
       const extension = (prepared.name.split('.').pop() || 'png').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'png';
       const path = `${state.user.id}/${folder}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
-      await uploadWithRetry(sb.storage.from('avatars'), path, prepared, {
+      await uploadStorageFile('avatars', path, prepared, {
         cacheControl: '3600',
         upsert: true,
         contentType: prepared.type,
         timeoutMs: isMobileLayout() ? MOBILE_STORAGE_UPLOAD_TIMEOUT_MS : STORAGE_UPLOAD_TIMEOUT_MS
-      }, isMobileLayout() ? 2 : 3);
+      }, isMobileLayout() ? 1 : 3);
       const { data } = sb.storage.from('avatars').getPublicUrl(path);
       return data.publicUrl;
     }
@@ -7746,17 +7747,34 @@
       const { file, messageType } = state.pendingPreviewFile;
       const button = $('filePreviewSendBtn');
       if (button.disabled) return;
-      setButtonLoading(button, true, 'Sending');
+      setButtonLoading(button, true, 'Preparing');
+      let prepared = null;
+      const clientId = crypto.randomUUID();
       try {
-        const prepared = await prepareFileForUpload(file, messageType);
+        await nextPaint();
+        prepared = await prepareFileForUpload(file, messageType);
+        setButtonLoading(button, true, navigator.onLine ? 'Sending' : 'Queued');
+        await nextPaint();
         await withTimeout(
-          sendMediaMessage(prepared, messageType),
-          MEDIA_SEND_TIMEOUT_MS,
-          'Sending timed out. Check your connection and try again.'
+          sendMediaMessage(prepared, messageType, null, { client_id: clientId }),
+          isMobileLayout() ? MOBILE_MEDIA_SEND_TIMEOUT_MS : MEDIA_SEND_TIMEOUT_MS,
+          'Sending timed out. The media was kept on this device and will retry when the connection is stable.'
         );
         state.pendingPreviewFile = null;
         closeModals();
       } catch (error) {
+        if (prepared && (isMobileLayout() || isOfflineSendError(error))) {
+          try {
+            await queueOfflineMedia(prepared, messageType, null, { client_id: clientId });
+            state.pendingPreviewFile = null;
+            closeModals();
+            toast('Connection was unstable. Media queued and will sync automatically.');
+            return;
+          } catch (queueError) {
+            toast(readableError(queueError), 'error');
+            return;
+          }
+        }
         toast(readableError(error), 'error');
       } finally {
         setButtonLoading(button, false, 'Send');
@@ -7834,9 +7852,19 @@
       if (!navigator.onLine) {
         await queueOfflineMedia(file, messageType, durationSeconds, metadata);
         toast('Media queued');
-        return;
+        return { queued: true };
       }
-      const uploaded = await uploadChatFile(file, messageType);
+      let uploaded;
+      try {
+        uploaded = await uploadChatFile(file, messageType);
+      } catch (error) {
+        if (isOfflineSendError(error)) {
+          await queueOfflineMedia(file, messageType, durationSeconds, metadata);
+          toast('Connection was unstable. Media queued and will sync automatically.');
+          return { queued: true };
+        }
+        throw error;
+      }
       const messagePayload = withClientId({
         conversation_id: state.currentConversation.conversation_id,
         sender_id: state.user.id,
@@ -7854,12 +7882,18 @@
       const result = await insertOrQueueMessage(messagePayload);
       if (result.queued) toast('Offline. Media message will sync when internet returns.');
       else playTone('send');
+      return result;
     }
 
     async function queueOfflineMedia(file, messageType, durationSeconds = null, metadata = {}) {
       validateUploadFile(file, messageType, { offline: true });
       const clientId = metadata.client_id || crypto.randomUUID();
-      const dataUrl = await fileToDataUrl(file);
+      if (state.offlineMediaOutbox.some((queued) => queued.id === clientId)) return;
+      const dataUrl = await withTimeout(
+        fileToDataUrl(file),
+        isMobileLayout() ? 10000 : 18000,
+        'Media could not be queued on this device. Try a smaller file.'
+      );
       const item = {
         id: clientId,
         conversation_id: state.currentConversation.conversation_id,
@@ -7913,12 +7947,12 @@
       validateUploadFile(file, folder === 'sticker' ? 'sticker' : messageTypeForFile(file));
       const extension = (file.name?.split('.').pop() || extensionForMime(file.type)).replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin';
       const path = `${state.user.id}/${folder}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
-      await uploadWithRetry(sb.storage.from('chat-uploads'), path, file, {
+      await uploadStorageFile('chat-uploads', path, file, {
         cacheControl: '3600',
         upsert: true,
         contentType: file.type || mimeFromFileName(file.name),
         timeoutMs: isMobileLayout() ? MOBILE_STORAGE_UPLOAD_TIMEOUT_MS : STORAGE_UPLOAD_TIMEOUT_MS
-      }, isMobileLayout() ? 2 : 3);
+      }, isMobileLayout() ? 1 : 3);
       const { data } = sb.storage.from('chat-uploads').getPublicUrl(path);
       return { path, publicUrl: data.publicUrl };
     }
@@ -8015,6 +8049,59 @@
       bitmap.close?.();
       if (!blob || (!force && blob.size >= file.size)) return file;
       return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+    }
+
+    async function uploadStorageFile(bucket, path, file, options, attempts = 3) {
+      if (isMobileLayout()) {
+        return uploadWithDirectFetch(bucket, path, file, options, attempts);
+      }
+      return uploadWithRetry(sb.storage.from(bucket), path, file, options, attempts);
+    }
+
+    async function uploadWithDirectFetch(bucket, path, file, options = {}, attempts = 2) {
+      let lastError;
+      const { timeoutMs = MOBILE_STORAGE_UPLOAD_TIMEOUT_MS, ...uploadOptions } = options || {};
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const { data } = await withTimeout(
+            sb.auth.getSession(),
+            6000,
+            'Session check timed out. Log in again and retry.'
+          );
+          const token = data?.session?.access_token;
+          if (!token) throw new Error('Your session expired. Log in again and retry.');
+          const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+          const response = await withTimeout(
+            fetch(`${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}/${encodedPath}`, {
+              method: 'POST',
+              headers: {
+                apikey: SUPABASE_ANON_KEY,
+                authorization: `Bearer ${token}`,
+                'x-upsert': uploadOptions.upsert === false ? 'false' : 'true',
+                'cache-control': uploadOptions.cacheControl || '3600',
+                'content-type': uploadOptions.contentType || file.type || 'application/octet-stream'
+              },
+              body: file,
+              signal: controller.signal
+            }),
+            timeoutMs,
+            'Upload timed out. Media will retry when your connection is stable.'
+          );
+          clearTimeout(timeoutId);
+          if (response.ok) return;
+          const text = await response.text().catch(() => '');
+          throw new Error(text || `Upload failed with status ${response.status}.`);
+        } catch (error) {
+          clearTimeout(timeoutId);
+          lastError = error?.name === 'AbortError'
+            ? new Error('Upload timed out. Media will retry when your connection is stable.')
+            : error;
+        }
+        if (attempt < attempts) await sleep(250 * attempt);
+      }
+      throw lastError;
     }
 
     async function uploadWithRetry(bucketClient, path, file, options, attempts = 3) {
