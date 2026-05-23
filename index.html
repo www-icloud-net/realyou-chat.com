@@ -3390,6 +3390,30 @@
       }
     }
 
+    html.low-resource *,
+    html.low-resource *::before,
+    html.low-resource *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+      scroll-behavior: auto !important;
+    }
+
+    html.low-resource body::before {
+      display: none !important;
+    }
+
+    html.low-resource .auth-card,
+    html.low-resource .modal,
+    html.low-resource .telegram-drawer,
+    html.low-resource .message-bubble,
+    html.low-resource .conversation-item,
+    html.low-resource .composer,
+    html.low-resource .chat-header {
+      backdrop-filter: none !important;
+      filter: none !important;
+    }
+
     @media (max-width: 760px) {
       html, body {
         background: var(--bg-secondary);
@@ -4193,14 +4217,19 @@
     };
     const MESSAGE_PAGE_SIZE = 50;
     const MOBILE_MESSAGE_PAGE_SIZE = 35;
+    const LITE_MESSAGE_PAGE_SIZE = 24;
     const MAX_RENDERED_MESSAGES = 260;
     const MESSAGE_CACHE_LIMIT = 80;
     const MESSAGE_LOAD_TIMEOUT_MS = 9000;
     const MOBILE_MESSAGE_LOAD_TIMEOUT_MS = 6000;
+    const LITE_MESSAGE_LOAD_TIMEOUT_MS = 10000;
     const CONVERSATION_LOAD_TIMEOUT_MS = 10000;
     const MOBILE_CONVERSATION_LOAD_TIMEOUT_MS = 7000;
+    const LITE_CONVERSATION_LOAD_TIMEOUT_MS = 10000;
     const PRESENCE_HEARTBEAT_MS = 45000;
+    const LITE_PRESENCE_HEARTBEAT_MS = 110000;
     const PRESENCE_IDLE_MS = 90000;
+    const LITE_PRESENCE_IDLE_MS = 180000;
     const SEARCH_CACHE_MS = 60000;
     const MOBILE_FAST_TAP_WINDOW_MS = 700;
     const ACCOUNT_DELETE_STORAGE_GRACE_MS = 900;
@@ -4322,6 +4351,7 @@
       pendingCallOffer: null,
       callCleanupTimer: null,
       ringtoneTimer: null,
+      outgoingToneTimer: null,
       callMuted: false,
       callCameraOff: false,
       callSpeakerOn: false,
@@ -4393,6 +4423,7 @@
 
     async function init() {
       applyStoredTheme();
+      applyResourceProfile();
       installPwaAssets();
       renderCountryCodeSelectors();
       renderEmojiPicker();
@@ -4610,6 +4641,15 @@
       document.addEventListener('keydown', resetInactivityTimers);
       document.addEventListener('pointerdown', resetInactivityTimers, { passive: true });
       document.addEventListener('touchstart', resetInactivityTimers, { passive: true });
+      document.addEventListener('pointerdown', primeAudioContext, { passive: true });
+      document.addEventListener('keydown', primeAudioContext);
+      navigator.connection?.addEventListener?.('change', () => {
+        applyResourceProfile();
+        if (state.user) {
+          startPresenceHeartbeat();
+          scheduleConversationReload();
+        }
+      });
       document.addEventListener('click', (event) => {
         if (!$('emojiPicker').contains(event.target) && !event.target.closest('#emojiBtn')) {
           $('emojiPicker').classList.add('hidden');
@@ -4985,6 +5025,7 @@
       clearTimeout(state.logoutTimer);
       clearTimeout(state.callCleanupTimer);
       clearInterval(state.presenceHeartbeatTimer);
+      stopCallTones();
       cancelAnimationFrame(state.conversationRenderFrame);
       cancelAnimationFrame(state.messageRenderFrame);
       state.conversationRenderFrame = null;
@@ -5017,7 +5058,7 @@
       try {
         response = await withTimeout(
           sb.rpc('get_my_conversations'),
-          isMobileLayout() ? MOBILE_CONVERSATION_LOAD_TIMEOUT_MS : CONVERSATION_LOAD_TIMEOUT_MS,
+          conversationLoadTimeout(),
           'Conversation refresh timed out.'
         );
       } catch (error) {
@@ -5084,7 +5125,9 @@
 
     function scheduleConversationReload() {
       clearTimeout(state.listReloadTimer);
-      const delay = document.hidden ? 1400 : 650;
+      const delay = document.hidden
+        ? (shouldUseLiteRuntime() ? 6500 : 1400)
+        : (shouldUseLiteRuntime() ? 900 : 650);
       state.listReloadTimer = setTimeout(loadConversations, delay);
     }
 
@@ -5137,19 +5180,19 @@
 
     function startPresenceHeartbeat() {
       clearInterval(state.presenceHeartbeatTimer);
-      state.presenceHeartbeatTimer = setInterval(() => updatePresence(true), PRESENCE_HEARTBEAT_MS);
+      state.presenceHeartbeatTimer = setInterval(() => updatePresence(true), presenceHeartbeatMs());
     }
 
     async function updatePresence(online = true, force = false) {
       if (!state.presenceChannel || !state.user) return;
       const visible = !document.hidden;
-      const active = Date.now() - state.lastActivityAt < PRESENCE_IDLE_MS;
+      const active = Date.now() - state.lastActivityAt < presenceIdleMs();
       const canShow = state.settings.onlineVisible !== false && state.profile?.show_online_status !== false;
       if (!online || !visible || !active || !canShow) {
         await state.presenceChannel.untrack?.().catch(() => {});
         return;
       }
-      if (!force && Date.now() - state.lastPresenceTrackAt < PRESENCE_HEARTBEAT_MS - 2000) return;
+      if (!force && Date.now() - state.lastPresenceTrackAt < presenceHeartbeatMs() - 2000) return;
       state.lastPresenceTrackAt = Date.now();
       await state.presenceChannel.track({
         user_id: state.user.id,
@@ -5181,11 +5224,45 @@
     }
 
     function messagePageSize() {
+      if (shouldUseLiteRuntime()) return LITE_MESSAGE_PAGE_SIZE;
       return isMobileLayout() ? MOBILE_MESSAGE_PAGE_SIZE : MESSAGE_PAGE_SIZE;
     }
 
     function messageLoadTimeout() {
+      if (shouldUseLiteRuntime()) return LITE_MESSAGE_LOAD_TIMEOUT_MS;
       return isMobileLayout() ? MOBILE_MESSAGE_LOAD_TIMEOUT_MS : MESSAGE_LOAD_TIMEOUT_MS;
+    }
+
+    function conversationLoadTimeout() {
+      if (shouldUseLiteRuntime()) return LITE_CONVERSATION_LOAD_TIMEOUT_MS;
+      return isMobileLayout() ? MOBILE_CONVERSATION_LOAD_TIMEOUT_MS : CONVERSATION_LOAD_TIMEOUT_MS;
+    }
+
+    function presenceHeartbeatMs() {
+      return shouldUseLiteRuntime() ? LITE_PRESENCE_HEARTBEAT_MS : PRESENCE_HEARTBEAT_MS;
+    }
+
+    function presenceIdleMs() {
+      return shouldUseLiteRuntime() ? LITE_PRESENCE_IDLE_MS : PRESENCE_IDLE_MS;
+    }
+
+    function connectionInfo() {
+      return navigator.connection || navigator.mozConnection || navigator.webkitConnection || null;
+    }
+
+    function shouldUseLiteRuntime() {
+      const connection = connectionInfo();
+      const effectiveType = String(connection?.effectiveType || '').toLowerCase();
+      const saveData = Boolean(connection?.saveData);
+      const slowNetwork = /(^slow-2g$|^2g$|^3g$)/.test(effectiveType);
+      const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 2;
+      const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
+      const narrowMobile = isMobileLayout() && Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 430;
+      return saveData || slowNetwork || (isMobileLayout() && (lowMemory || lowCpu || narrowMobile));
+    }
+
+    function applyResourceProfile() {
+      document.documentElement.classList.toggle('low-resource', shouldUseLiteRuntime());
     }
 
     function loadOfflineOutbox() {
@@ -5628,8 +5705,9 @@
     }
 
     function trimRenderedMessages() {
-      if (state.messages.length <= MAX_RENDERED_MESSAGES) return;
-      state.messages = state.messages.slice(state.messages.length - MAX_RENDERED_MESSAGES);
+      const max = shouldUseLiteRuntime() ? 160 : MAX_RENDERED_MESSAGES;
+      if (state.messages.length <= max) return;
+      state.messages = state.messages.slice(state.messages.length - max);
       state.oldestMessageCursor = messageCursor(state.messages[0]) || state.oldestMessageCursor;
       state.messagesHasMore = true;
     }
@@ -5759,6 +5837,7 @@
         $('incomingCallActions').classList.add('hidden');
         $('callTitle').textContent = kind === 'video' ? 'Video call' : 'Audio call';
         $('callStatus').textContent = 'Calling...';
+        startOutgoingCallTone();
         const offer = await state.peerConnection.createOffer();
         await state.peerConnection.setLocalDescription(offer);
         await sendCallSignal({ type: 'offer', call_id: callId, kind, sdp: offer });
@@ -5784,6 +5863,7 @@
       }
 
       if (payload.type === 'answer' && state.peerConnection && payload.call_id === state.activeCall?.id) {
+        stopOutgoingCallTone();
         await state.peerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
         $('callStatus').textContent = 'Connected';
         return;
@@ -5795,6 +5875,7 @@
       }
 
       if (payload.type === 'end') {
+        stopCallTones();
         endCall(false);
       }
     }
@@ -5823,8 +5904,41 @@
 
     function declineIncomingCall() {
       if (state.pendingCallOffer) sendCallSignal({ type: 'end', call_id: state.pendingCallOffer.call_id });
-      stopRingtone();
+      stopCallTones();
       endCall(false);
+    }
+
+    function callAudioConstraints() {
+      return {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      };
+    }
+
+    function callVideoConstraints() {
+      const base = { facingMode: state.currentFacingMode || 'user' };
+      if (shouldUseLiteRuntime()) {
+        return {
+          ...base,
+          width: { ideal: 640, max: 960 },
+          height: { ideal: 360, max: 540 },
+          frameRate: { ideal: 18, max: 24 }
+        };
+      }
+      return {
+        ...base,
+        width: { ideal: 960, max: 1280 },
+        height: { ideal: 540, max: 720 },
+        frameRate: { ideal: 24, max: 30 }
+      };
+    }
+
+    function callMediaConstraints(kind) {
+      return {
+        audio: callAudioConstraints(),
+        video: kind === 'video' ? callVideoConstraints() : false
+      };
     }
 
     async function setupCallMedia(kind) {
@@ -5836,15 +5950,15 @@
       state.privateSinkId = '';
       state.availableVideoInputs = [];
       state.currentVideoDeviceId = null;
-      const constraints = {
-        audio: true,
-        video: kind === 'video' ? { facingMode: state.currentFacingMode || 'user' } : false
-      };
+      const constraints = callMediaConstraints(kind);
       try {
         state.localStream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (error) {
         if (kind !== 'video') throw error;
-        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        state.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: callAudioConstraints(),
+          video: true
+        });
       }
       if (kind === 'video' && navigator.mediaDevices?.enumerateDevices) {
         const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
@@ -5861,11 +5975,20 @@
       $('remoteAudio').srcObject = state.remoteStream;
       applySpeakerMode(false).catch(() => {});
       state.peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+        iceCandidatePoolSize: shouldUseLiteRuntime() ? 0 : 2,
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' }
+        ]
       });
       state.localStream.getTracks().forEach((track) => state.peerConnection.addTrack(track, state.localStream));
       state.peerConnection.ontrack = (event) => {
         event.streams[0]?.getTracks().forEach((track) => state.remoteStream.addTrack(track));
+        stopOutgoingCallTone();
+        $('remoteAudio')?.play?.().catch(() => {});
+        $('remoteVideo')?.play?.().catch(() => {});
       };
       state.peerConnection.onicecandidate = (event) => {
         if (event.candidate && state.activeCall) {
@@ -5908,7 +6031,7 @@
 
     function endCall(notify = true) {
       if (notify && state.activeCall) sendCallSignal({ type: 'end', call_id: state.activeCall.id });
-      stopRingtone();
+      stopCallTones();
       clearTimeout(state.callCleanupTimer);
       state.peerConnection?.close();
       state.peerConnection = null;
@@ -6082,6 +6205,7 @@
 
     function startRingtone() {
       stopRingtone();
+      stopOutgoingCallTone();
       playTone('ring');
       state.ringtoneTimer = setInterval(() => playTone('ring'), 1200);
     }
@@ -6089,6 +6213,22 @@
     function stopRingtone() {
       if (state.ringtoneTimer) clearInterval(state.ringtoneTimer);
       state.ringtoneTimer = null;
+    }
+
+    function startOutgoingCallTone() {
+      stopOutgoingCallTone();
+      playTone('call-outgoing');
+      state.outgoingToneTimer = setInterval(() => playTone('call-outgoing'), 1450);
+    }
+
+    function stopOutgoingCallTone() {
+      if (state.outgoingToneTimer) clearInterval(state.outgoingToneTimer);
+      state.outgoingToneTimer = null;
+    }
+
+    function stopCallTones() {
+      stopRingtone();
+      stopOutgoingCallTone();
     }
 
     async function markRead(conversationId) {
@@ -6374,6 +6514,7 @@
 
     function renderMessages() {
       const box = $('messages');
+      trimRenderedMessages();
       if (!state.messages.length) {
         box.innerHTML = emptyMarkup('No messages yet', '');
         return;
@@ -7046,6 +7187,7 @@
         $('appScreen').style.setProperty('--user-list-preview-font-size', fontPreset.listPreview);
       }
       updateThemeButton();
+      applyResourceProfile();
     }
 
     function openSettingsModal() {
@@ -8558,6 +8700,11 @@
     }
 
     function uploadTimeoutForMedia(messageType) {
+      if (shouldUseLiteRuntime()) {
+        if (messageType === 'video') return 180000;
+        if (messageType === 'document' || messageType === 'audio') return 150000;
+        return 90000;
+      }
       if (!isMobileLayout()) return STORAGE_UPLOAD_TIMEOUT_MS;
       if (messageType === 'video') return 150000;
       if (messageType === 'document' || messageType === 'audio') return 120000;
@@ -8607,9 +8754,13 @@
 
     async function prepareFileForUpload(file, messageType) {
       if (!['image', 'sticker'].includes(messageType)) return file;
-      if (file.type === 'image/gif' || file.size < 1400 * 1024) return file;
+      const lite = shouldUseLiteRuntime();
+      if (file.type === 'image/gif' || (!lite && file.size < 1400 * 1024) || (lite && file.size < 700 * 1024)) return file;
       return withTimeout(
-        compressImageFile(file, messageType === 'sticker' ? 512 : 1600, messageType === 'sticker' ? .82 : .78),
+        compressImageFile(file, messageType === 'sticker' ? 512 : (lite ? 1280 : 1600), messageType === 'sticker' ? .82 : (lite ? .68 : .78), {
+          force: lite && file.size > 700 * 1024,
+          outputType: 'image/jpeg'
+        }),
         IMAGE_PROCESS_TIMEOUT_MS,
         'Image processing took too long. Choose a smaller image.'
       );
@@ -8660,6 +8811,14 @@
 
     async function uploadStorageFile(bucket, path, file, options, attempts = 3) {
       const bucketClient = sb.storage.from(bucket);
+      if (shouldUseLiteRuntime()) {
+        try {
+          return await uploadWithDirectFetch(bucket, path, file, options, Math.max(2, attempts));
+        } catch (error) {
+          if (isOfflineSendError(error)) throw error;
+          return uploadWithRetry(bucketClient, path, file, options, 1);
+        }
+      }
       try {
         return await uploadWithRetry(bucketClient, path, file, options, attempts);
       } catch (error) {
@@ -8985,6 +9144,7 @@
     }
 
     function handleViewportLayout() {
+      applyResourceProfile();
       if (!$('appScreen') || $('appScreen').classList.contains('hidden')) return;
       if (!isMobileLayout()) {
         setMobileDrawerOpen(false);
@@ -9414,24 +9574,43 @@
       setTimeout(() => item.remove(), 3600);
     }
 
+    function primeAudioContext() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        state.audioContext = state.audioContext || new AudioContext();
+        if (state.audioContext.state === 'suspended') state.audioContext.resume().catch(() => {});
+      } catch {}
+    }
+
     function playTone(type) {
       try {
-        if (state.settings?.sounds === false && type !== 'ring') return;
+        const callTone = type === 'ring' || type === 'call-outgoing';
+        if (state.settings?.sounds === false && !callTone) return;
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) return;
         state.audioContext = state.audioContext || new AudioContext();
         const context = state.audioContext;
+        if (context.state === 'suspended') context.resume().catch(() => {});
         const oscillator = context.createOscillator();
         const gain = context.createGain();
         oscillator.type = 'sine';
-        oscillator.frequency.value = type === 'ring' ? 880 : type === 'receive' ? 720 : 520;
+        oscillator.frequency.value = type === 'ring'
+          ? 880
+          : type === 'call-outgoing'
+            ? 470
+            : type === 'receive'
+              ? 720
+              : 520;
+        const duration = type === 'ring' ? 0.52 : type === 'call-outgoing' ? 0.34 : 0.18;
+        const volume = type === 'ring' ? 0.14 : type === 'call-outgoing' ? 0.1 : 0.08;
         gain.gain.setValueAtTime(0.0001, context.currentTime);
-        gain.gain.exponentialRampToValueAtTime(type === 'ring' ? 0.12 : 0.08, context.currentTime + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + (type === 'ring' ? 0.48 : 0.16));
+        gain.gain.exponentialRampToValueAtTime(volume, context.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
         oscillator.connect(gain);
         gain.connect(context.destination);
         oscillator.start();
-        oscillator.stop(context.currentTime + (type === 'ring' ? 0.5 : 0.18));
+        oscillator.stop(context.currentTime + duration + 0.02);
       } catch {
         // Sound feedback is optional and may be blocked until the user interacts.
       }
