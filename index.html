@@ -4192,7 +4192,13 @@
       large: { message: '20px', listTitle: '21px', listPreview: '16px' }
     };
     const MESSAGE_PAGE_SIZE = 50;
+    const MOBILE_MESSAGE_PAGE_SIZE = 35;
     const MAX_RENDERED_MESSAGES = 260;
+    const MESSAGE_CACHE_LIMIT = 80;
+    const MESSAGE_LOAD_TIMEOUT_MS = 9000;
+    const MOBILE_MESSAGE_LOAD_TIMEOUT_MS = 6000;
+    const CONVERSATION_LOAD_TIMEOUT_MS = 10000;
+    const MOBILE_CONVERSATION_LOAD_TIMEOUT_MS = 7000;
     const PRESENCE_HEARTBEAT_MS = 45000;
     const PRESENCE_IDLE_MS = 90000;
     const SEARCH_CACHE_MS = 60000;
@@ -4261,6 +4267,7 @@
       conversations: [],
       currentConversation: null,
       messages: [],
+      messageCache: new Map(),
       messagesHasMore: false,
       oldestMessageCursor: null,
       loadingOlderMessages: false,
@@ -4959,6 +4966,7 @@
       state.onlineUsers.clear();
       state.typingUsers.clear();
       state.searchCache.clear();
+      state.messageCache.clear();
       state.offlineOutbox = [];
       state.offlineMediaOutbox = [];
       state.familyCircles = [];
@@ -5005,11 +5013,19 @@
 
     async function loadConversations() {
       if (!state.user) return;
-      const { data, error } = await sb.rpc('get_my_conversations');
-      if (error) {
-        toast(readableError(error), 'error');
+      let response;
+      try {
+        response = await withTimeout(
+          sb.rpc('get_my_conversations'),
+          isMobileLayout() ? MOBILE_CONVERSATION_LOAD_TIMEOUT_MS : CONVERSATION_LOAD_TIMEOUT_MS,
+          'Conversation refresh timed out.'
+        );
+      } catch (error) {
+        scheduleConversationRender();
         return;
       }
+      const { data, error } = response;
+      if (error) return;
       state.conversations = (data || []).map((conversation) => ({
         ...conversation,
         members: Array.isArray(conversation.members) ? conversation.members : []
@@ -5160,6 +5176,18 @@
       return `${OUTBOX_STORAGE_PREFIX}:media:${state.user?.id || 'guest'}`;
     }
 
+    function messageCacheStorageKey(conversationId) {
+      return `${OUTBOX_STORAGE_PREFIX}:messages:${state.user?.id || 'guest'}:${conversationId}`;
+    }
+
+    function messagePageSize() {
+      return isMobileLayout() ? MOBILE_MESSAGE_PAGE_SIZE : MESSAGE_PAGE_SIZE;
+    }
+
+    function messageLoadTimeout() {
+      return isMobileLayout() ? MOBILE_MESSAGE_LOAD_TIMEOUT_MS : MESSAGE_LOAD_TIMEOUT_MS;
+    }
+
     function loadOfflineOutbox() {
       if (!state.user) return;
       try {
@@ -5173,6 +5201,35 @@
         state.offlineMediaOutbox = Array.isArray(savedMedia) ? savedMedia : [];
       } catch {
         state.offlineMediaOutbox = [];
+      }
+    }
+
+    function cachedMessagesFor(conversationId) {
+      if (!conversationId) return [];
+      const memory = state.messageCache.get(conversationId);
+      if (Array.isArray(memory)) return memory;
+      try {
+        const saved = JSON.parse(localStorage.getItem(messageCacheStorageKey(conversationId)) || '[]');
+        const messages = Array.isArray(saved) ? saved : [];
+        state.messageCache.set(conversationId, messages);
+        return messages;
+      } catch {
+        state.messageCache.set(conversationId, []);
+        return [];
+      }
+    }
+
+    function saveMessageCache(conversationId, messages = state.messages) {
+      if (!state.user || !conversationId) return;
+      const safeMessages = (messages || [])
+        .filter((message) => !message.pending && !message.deleted_at)
+        .filter((message) => !String(message.media_url || '').startsWith('data:'))
+        .slice(-MESSAGE_CACHE_LIMIT);
+      state.messageCache.set(conversationId, safeMessages);
+      try {
+        localStorage.setItem(messageCacheStorageKey(conversationId), JSON.stringify(safeMessages));
+      } catch {
+        state.messageCache.set(conversationId, safeMessages.slice(-25));
       }
     }
 
@@ -5359,6 +5416,7 @@
         if (data && state.currentConversation?.conversation_id === data.conversation_id && state.activeMessageConversationId === data.conversation_id) {
           if (clientId) removePendingMediaMessage(clientId);
           state.messages = mergeMessageArrays(state.messages, [data]);
+          saveMessageCache(data.conversation_id, state.messages);
           scheduleMessagesRender(true);
         } else if (clientId) {
           removePendingMediaMessage(clientId);
@@ -5436,7 +5494,11 @@
       $('chatHeader').classList.remove('hidden');
       $('messagesWrap').classList.remove('hidden');
       $('composer').classList.toggle('hidden', isPendingConversationRequest(conversation));
-      $('messages').innerHTML = loadingMarkup('Loading messages');
+      const cached = cachedMessagesFor(conversationId);
+      state.messages = cached;
+      mergePendingMessages(conversationId);
+      if (state.messages.length) scheduleMessagesRender(true);
+      else $('messages').innerHTML = '';
       if (!options.keepSidebar) setSidebarOpen(false);
       if (isMobileLayout()) scheduleConversationRender();
       else renderConversations();
@@ -5445,32 +5507,45 @@
       pushAppView('chat', { conversationId });
       if (!isMobileLayout()) requestAnimationFrame(() => $('messageInput').focus());
       await nextPaint();
-      await cleanupConversationChannels();
+      const messageLoad = loadMessages(conversationId, loadRequest);
+      cleanupConversationChannels().catch(() => {});
       if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
-      await loadMessages(conversationId, loadRequest);
-      if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
-      await Promise.all([
+      Promise.all([
         subscribeMessages(conversationId),
         subscribeTyping(conversationId),
         subscribeCalls(conversationId)
-      ]);
-      await markRead(conversationId);
+      ]).catch(() => {});
+      await messageLoad.catch(() => {});
+      if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
+      markRead(conversationId).catch(() => {});
       scheduleConversationReload();
     }
 
     async function loadMessages(conversationId, loadRequest = state.messageLoadRequest) {
-      if (loadRequest === state.messageLoadRequest) $('messages').innerHTML = loadingMarkup('Loading messages');
-      const { data, error } = await sb.from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(MESSAGE_PAGE_SIZE);
+      let response;
+      try {
+        response = await withTimeout(
+          sb.from('messages')
+            .select('*')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .limit(messagePageSize()),
+          messageLoadTimeout(),
+          'Message refresh timed out.'
+        );
+      } catch (error) {
+        if (loadRequest === state.messageLoadRequest && state.currentConversation?.conversation_id === conversationId && !state.messages.length) {
+          $('messages').innerHTML = '';
+        }
+        return;
+      }
 
       if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
 
+      const { data, error } = response;
       if (error) {
-        $('messages').innerHTML = emptyMarkup('Messages unavailable', readableError(error));
+        if (!state.messages.length) $('messages').innerHTML = '';
         return;
       }
 
@@ -5480,14 +5555,21 @@
         return Date.now() - new Date(message.created_at).getTime() <= disappearingSeconds * 1000;
       });
       state.messages = page;
-      state.messagesHasMore = (data || []).length === MESSAGE_PAGE_SIZE;
+      state.messagesHasMore = (data || []).length === messagePageSize();
       state.oldestMessageCursor = messageCursor(page[0]);
       mergePendingMessages(conversationId);
-      await loadProfilesForIds(state.messages.map((message) => message.sender_id));
-      if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
-      await loadMessageExtras();
-      if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
+      saveMessageCache(conversationId, state.messages);
       scheduleMessagesRender(true);
+      loadProfilesForIds(state.messages.map((message) => message.sender_id))
+        .then(async () => {
+          if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
+          await loadMessageExtras();
+          if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
+          saveMessageCache(conversationId, state.messages);
+          scheduleMessagesRender(false);
+        })
+        .catch(() => {});
+      return;
     }
 
     async function loadOlderMessages() {
@@ -5500,13 +5582,17 @@
       const cursor = state.oldestMessageCursor;
 
       try {
-        const { data, error } = await sb.from('messages')
-          .select('*')
-          .eq('conversation_id', conversationId)
-          .or(`created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`)
-          .order('created_at', { ascending: false })
-          .order('id', { ascending: false })
-          .limit(MESSAGE_PAGE_SIZE);
+        const { data, error } = await withTimeout(
+          sb.from('messages')
+            .select('*')
+            .eq('conversation_id', conversationId)
+            .or(`created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .limit(messagePageSize()),
+          messageLoadTimeout(),
+          'Message refresh timed out.'
+        );
         if (error) throw error;
         if (loadRequest !== state.messageLoadRequest || state.currentConversation?.conversation_id !== conversationId) return;
 
@@ -5515,10 +5601,11 @@
           if (!disappearingSeconds) return true;
           return Date.now() - new Date(message.created_at).getTime() <= disappearingSeconds * 1000;
         });
-        state.messagesHasMore = (data || []).length === MESSAGE_PAGE_SIZE;
+        state.messagesHasMore = (data || []).length === messagePageSize();
         if (older.length) {
           state.messages = mergeMessageArrays(older, state.messages);
           state.oldestMessageCursor = messageCursor(state.messages[0]) || state.oldestMessageCursor;
+          saveMessageCache(conversationId, state.messages);
           await loadProfilesForIds(older.map((message) => message.sender_id));
           await loadMessageExtras();
           state.preserveMessageScrollOffset = { addedHeight: null, previousHeight };
@@ -5594,6 +5681,7 @@
             state.messages.push(message);
             await loadProfilesForIds([message.sender_id]);
             await loadMessageExtras();
+            saveMessageCache(conversationId, state.messages);
             scheduleMessagesRender(true);
           }
           if (message.sender_id !== state.user.id) {
@@ -5613,6 +5701,7 @@
           const existing = state.messages.find((item) => item.id === updated.id);
           if (existing) Object.assign(existing, updated);
           await loadMessageExtras();
+          saveMessageCache(conversationId, state.messages);
           scheduleMessagesRender();
         })
         .subscribe();
