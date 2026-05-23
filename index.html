@@ -963,6 +963,11 @@
       display: none;
     }
 
+    .mobile-profile-btn {
+      display: none;
+      overflow: hidden;
+    }
+
     .account-danger {
       display: grid;
       gap: 10px;
@@ -2788,6 +2793,18 @@
         display: none;
       }
 
+      #appScreen .mobile-profile-btn {
+        display: grid;
+      }
+
+      #appScreen .mobile-profile-btn .avatar {
+        width: 34px;
+        height: 34px;
+        border: 0;
+        box-shadow: none;
+        font-size: 13px;
+      }
+
       #appScreen .chat-header {
         height: 64px;
         min-height: 64px;
@@ -2949,6 +2966,7 @@
         <div class="chat-list-header">
           <h1>Chats</h1>
           <div class="chat-list-actions">
+            <button id="mobileProfileBtn" class="wa-header-btn mobile-profile-btn" type="button" title="Edit profile" aria-label="Edit profile"><span data-icon="contact"></span></button>
             <button id="quickGroupBtn" class="wa-header-btn" type="button" title="New group"><span data-icon="user-plus"></span></button>
             <button id="sidebarMenuBtn" class="wa-header-btn" type="button" title="Menu"><span data-icon="more-vertical"></span></button>
           </div>
@@ -3799,6 +3817,7 @@
       $('themeToggleBtn').addEventListener('click', toggleTheme);
       $('currentUserAvatar').addEventListener('click', openProfileModal);
       $('railProfileBtn').addEventListener('click', openProfileModal);
+      $('mobileProfileBtn').addEventListener('click', openProfileModal);
       $('profileForm').addEventListener('submit', saveProfile);
       $('familyHubBtn').addEventListener('click', openFamilyModal);
       $('emergencyBtn').addEventListener('click', sendEmergencyAlert);
@@ -5077,6 +5096,7 @@
       if (!state.profile) return;
       $('currentUserAvatar').innerHTML = avatarInner(state.profile.avatar_url, displayName(state.profile));
       $('railProfileBtn').innerHTML = avatarInner(state.profile.avatar_url, displayName(state.profile));
+      $('mobileProfileBtn').innerHTML = avatarMarkup(state.profile.avatar_url, displayName(state.profile), 'small');
       $('currentUserName').textContent = displayName(state.profile);
       $('currentUserHandle').textContent = '@' + state.profile.username;
     }
@@ -5849,12 +5869,14 @@
       button.disabled = true;
       button.textContent = 'Deleting...';
       try {
+        await deleteOwnStorageFiles().catch(() => {});
         const { error } = await sb.rpc('delete_my_account');
         if (error) throw error;
+        closeModals();
+        showAuth();
         localStorage.removeItem(settingsStorageKey());
         await cleanupApp();
         await sb.auth.signOut().catch(() => {});
-        closeModals();
         showAuth();
         toast('Account deleted');
       } catch (error) {
@@ -5863,6 +5885,38 @@
         button.disabled = false;
         button.textContent = 'Delete account';
       }
+    }
+
+    async function deleteOwnStorageFiles() {
+      if (!state.user?.id || !sb.storage?.from) return;
+      await Promise.all([
+        removeStorageFolder('avatars', state.user.id),
+        removeStorageFolder('chat-uploads', state.user.id)
+      ]);
+    }
+
+    async function removeStorageFolder(bucket, folder) {
+      const bucketClient = sb.storage.from(bucket);
+      const paths = await listStorageFiles(bucketClient, folder);
+      if (paths.length) await bucketClient.remove(paths);
+    }
+
+    async function listStorageFiles(bucketClient, folder) {
+      const found = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await bucketClient.list(folder, { limit: 100, offset });
+        if (error || !Array.isArray(data) || !data.length) break;
+        for (const item of data) {
+          const path = `${folder}/${item.name}`;
+          const isFolder = !item.id && !item.metadata;
+          if (isFolder) found.push(...await listStorageFiles(bucketClient, path));
+          else found.push(path);
+        }
+        if (data.length < 100) break;
+        offset += data.length;
+      }
+      return found;
     }
 
     async function sha256(value) {
