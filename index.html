@@ -3437,6 +3437,492 @@
         transform: none !important;
       }
     }
+
+    @media (max-width: 760px) {
+      html.low-resource,
+      html.low-resource body {
+        background: #f4f7fb !important;
+        color: #0f172a;
+      }
+
+      html.low-resource #authScreen.auth-screen {
+        min-height: 100dvh;
+        padding: 0;
+        background: #f4f7fb;
+      }
+
+      html.low-resource .auth-card {
+        width: 100vw;
+        min-height: 100dvh;
+        display: grid;
+        grid-template-columns: 1fr;
+        border: 0;
+        border-radius: 0;
+        background: #fff;
+        box-shadow: none;
+      }
+
+      html.low-resource .brand-panel {
+        min-height: 0;
+        padding: max(30px, env(safe-area-inset-top)) 20px 20px;
+        background: #1682e6;
+        color: #fff;
+      }
+
+      html.low-resource .brand-logo {
+        width: 58px;
+        height: 58px;
+        border-radius: 18px;
+        background: #fff;
+        color: #1682e6;
+        box-shadow: none;
+      }
+
+      html.low-resource .brand-title {
+        margin-top: 20px;
+        color: #fff;
+        font-size: clamp(34px, 11vw, 48px);
+        line-height: .95;
+      }
+
+      html.low-resource .brand-copy,
+      html.low-resource .floating-cards {
+        display: none;
+      }
+
+      html.low-resource .auth-form-panel {
+        padding: 22px 18px max(22px, env(safe-area-inset-bottom));
+        background: #fff;
+      }
+
+      html.low-resource .auth-tabs {
+        background: #eef5ff;
+        border: 0;
+        box-shadow: none;
+      }
+
+      html.low-resource .auth-tab.active,
+      html.low-resource .btn.primary {
+        background: #1682e6;
+        color: #fff;
+        box-shadow: none;
+      }
+
+      html.low-resource .input,
+      html.low-resource .textarea {
+        border-color: #d8e1ec;
+        background: #f7f9fc;
+        color: #0f172a;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen.app-shell {
+        width: 100vw;
+        height: 100dvh;
+        display: grid;
+        grid-template-columns: 1fr;
+        border: 0;
+        border-radius: 0;
+        background: #fff;
+        color: #0f172a;
+        box-shadow: none;
+      }
+
+      html.low-resource .drawer-scrim:not(.hidden) {
+        background: rgba(15, 23, 42, .28);
+      }
+
+      html.low-resource .hamburger {
+        top: max(9px, env(safe-area-inset-top));
+        left: max(9px, env(safe-area-inset-left));
+        width: 40px;
+        height: 40px;
+        border: 0;
+        border-radius: 14px;
+        background: #0f73d8;
+        color: #fff;
+        box-shadow: none;
+      }
+
+      html.low-resource .telegram-drawer {
+        width: min(84vw, 360px);
+        background: #fff;
+        color: #0f172a;
+        border-right: 1px solid #dbe4ef;
+        box-shadow: none;
+      }
+
+      html.low-resource .telegram-drawer-head {
+        background: #1682e6;
+        color: #fff;
+      }
+
+      html.low-resource .telegram-account-list,
+      html.low-resource .telegram-menu-list {
+        background: #fff;
+      }
+
+      html.low-resource .telegram-account-text strong,
+      html.low-resource .telegram-account-row strong,
+      html.low-resource .telegram-menu-list strong {
+        color: #0f172a;
+        font-size: 17px;
+        font-weight: 650;
+      }
+
+      html.low-resource .telegram-drawer-head .telegram-account-text strong {
+        color: #fff;
+      }
+
+      html.low-resource .telegram-account-text span,
+      html.low-resource .telegram-account-row small {
+        color: #64748b;
+      }
+
+      html.low-resource .telegram-drawer-head .telegram-account-text span {
+        color: rgba(255,255,255,.82);
+      }
+
+      html.low-resource .telegram-menu-list button,
+      html.low-resource .telegram-account-row {
+        min-height: 54px;
+        color: #0f172a;
+      }
+
+      html.low-resource .telegram-menu-list span,
+      html.low-resource .telegram-menu-icon {
+        color: #64748b;
+      }
+
+      html.low-resource .telegram-menu-list .telegram-drawer-logout,
+      html.low-resource .telegram-menu-list .telegram-drawer-logout span {
+        color: #dc2626;
+      }
+
+      html.low-resource #appScreen .sidebar {
+        width: 100vw;
+        max-width: none;
+        background: #fff;
+        color: #0f172a;
+        border: 0;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .sidebar-top {
+        padding: max(16px, env(safe-area-inset-top)) 14px 10px;
+        background: #fff;
+        border-bottom: 1px solid #e5edf5;
+      }
+
+      html.low-resource #appScreen .chat-list-header {
+        min-height: 40px;
+        margin-bottom: 12px;
+        padding-left: 50px;
+      }
+
+      html.low-resource #appScreen .chat-list-header h1 {
+        color: #0f172a;
+        font-size: 25px;
+        font-weight: 750;
+      }
+
+      html.low-resource #appScreen .wa-header-btn {
+        width: 38px;
+        height: 38px;
+        color: #0f172a;
+        background: transparent;
+      }
+
+      html.low-resource #appScreen .search-wrap {
+        height: 44px;
+        border: 1px solid #e2e8f0;
+        border-radius: 22px;
+        background: #f3f7fb;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .search-wrap .input {
+        height: 42px;
+        padding-left: 44px;
+        padding-right: 34px;
+        background: transparent;
+        color: #0f172a;
+        caret-color: #0f172a;
+        font-size: 15px;
+      }
+
+      html.low-resource #appScreen .search-wrap .input::placeholder {
+        color: #64748b;
+      }
+
+      html.low-resource #appScreen .search-icon {
+        left: 15px;
+        color: #64748b;
+        font-size: 20px;
+      }
+
+      html.low-resource #appScreen .sidebar-tabs {
+        display: flex;
+        gap: 7px;
+        margin-top: 10px;
+        padding: 0;
+        background: transparent;
+        overflow-x: auto;
+      }
+
+      html.low-resource #appScreen .sidebar-tab {
+        flex: 0 0 auto;
+        min-height: 34px;
+        padding: 0 13px;
+        border: 1px solid #dbe4ef;
+        border-radius: 999px;
+        background: #fff;
+        color: #334155;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      html.low-resource #appScreen .sidebar-tab.active {
+        border-color: #1682e6;
+        background: #1682e6;
+        color: #fff;
+      }
+
+      html.low-resource #appScreen .conversation-list,
+      html.low-resource #appScreen .search-results,
+      html.low-resource #appScreen .group-results {
+        padding: 2px 0 8px;
+        gap: 0;
+        background: #fff;
+      }
+
+      html.low-resource #appScreen .conversation-item,
+      html.low-resource #appScreen .person-row {
+        grid-template-columns: 52px minmax(0,1fr) auto;
+        min-height: 66px;
+        gap: 10px;
+        padding: 7px 14px;
+        border: 0;
+        border-bottom: 1px solid #eef2f7;
+        border-radius: 0;
+        background: #fff;
+        color: #0f172a;
+      }
+
+      html.low-resource #appScreen .conversation-item.active,
+      html.low-resource #appScreen .conversation-item:hover,
+      html.low-resource #appScreen .person-row:hover {
+        background: #edf6ff;
+      }
+
+      html.low-resource #appScreen .conversation-item .avatar,
+      html.low-resource #appScreen .person-row .avatar {
+        width: 46px;
+        height: 46px;
+        border: 0;
+        box-shadow: none;
+        font-size: 16px;
+      }
+
+      html.low-resource #appScreen .conversation-title,
+      html.low-resource #appScreen .person-title {
+        color: #0f172a;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      html.low-resource #appScreen .conversation-preview,
+      html.low-resource #appScreen .person-subtitle,
+      html.low-resource #appScreen .conversation-meta {
+        color: #64748b;
+        font-size: 12px;
+      }
+
+      html.low-resource #appScreen .unread-badge {
+        background: #1682e6;
+        color: #fff;
+      }
+
+      html.low-resource #appScreen .sidebar-bottom {
+        padding: 8px 14px max(10px, env(safe-area-inset-bottom));
+        border-top: 1px solid #e5edf5;
+        background: #fff;
+      }
+
+      html.low-resource #appScreen .sidebar-bottom .btn {
+        min-height: 44px;
+        border-radius: 22px;
+        background: #1682e6;
+        color: #fff;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .chat-main {
+        grid-template-rows: 58px minmax(0, 1fr) 58px;
+        background: #edf4fb;
+        color: #0f172a;
+      }
+
+      html.low-resource #appScreen .chat-header {
+        height: 58px;
+        min-height: 58px;
+        padding: max(7px, env(safe-area-inset-top)) 6px 7px 56px;
+        border: 0;
+        background: #1682e6;
+        color: #fff;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .chat-header .avatar {
+        width: 40px;
+        height: 40px;
+        border: 0;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .chat-main .chat-title,
+      html.low-resource #appScreen .chat-subtitle {
+        color: #fff;
+      }
+
+      html.low-resource #appScreen .chat-main .chat-title {
+        font-size: 16px;
+        font-weight: 750;
+      }
+
+      html.low-resource #appScreen .chat-subtitle {
+        font-size: 11px;
+        opacity: .86;
+      }
+
+      html.low-resource #appScreen .chat-actions {
+        gap: 0;
+      }
+
+      html.low-resource #appScreen .chat-actions .btn {
+        width: 34px;
+        height: 34px;
+        color: #fff;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .messages-wrap {
+        background: #edf4fb;
+      }
+
+      html.low-resource #appScreen .messages {
+        padding: 8px 7px;
+        gap: 5px;
+        background: #edf4fb;
+      }
+
+      html.low-resource #appScreen .message-row {
+        max-width: 86%;
+      }
+
+      html.low-resource #appScreen .message-row > .avatar {
+        width: 28px;
+        height: 28px;
+        border: 0;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .message-bubble {
+        padding: 6px 8px;
+        border: 1px solid #e3eaf2;
+        border-radius: 14px 14px 14px 4px;
+        background: #fff;
+        color: #0f172a;
+        box-shadow: none;
+        font-size: 14px;
+      }
+
+      html.low-resource #appScreen .message-row.outgoing .message-bubble {
+        border-color: #bee3ff;
+        border-radius: 14px 14px 4px 14px;
+        background: #dff1ff;
+        color: #0f172a;
+      }
+
+      html.low-resource #appScreen .message-meta-line {
+        color: #2563eb;
+        font-size: 11px;
+      }
+
+      html.low-resource #appScreen .message-status {
+        color: #1682e6;
+        font-size: 11px;
+      }
+
+      html.low-resource #appScreen .composer {
+        min-height: 58px;
+        padding: 6px 7px max(6px, env(safe-area-inset-bottom));
+        border-top: 1px solid #dbe4ef;
+        background: #fff;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .composer-inner {
+        grid-template-columns: 36px 36px minmax(0,1fr) 36px 38px;
+        min-height: 46px;
+        gap: 2px;
+        padding: 0 4px;
+        border: 0;
+        border-radius: 24px;
+        background: #f3f7fb;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen .composer-inner .btn {
+        width: 34px;
+        height: 34px;
+        color: #334155;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      html.low-resource #appScreen #sendBtn {
+        background: #1682e6;
+        color: #fff;
+      }
+
+      html.low-resource #appScreen .message-input {
+        min-height: 40px;
+        max-height: 70px;
+        padding: 8px 4px;
+        color: #0f172a;
+        font-size: 15px;
+      }
+
+      html.low-resource .attach-menu,
+      html.low-resource .emoji-picker,
+      html.low-resource .menu-popover {
+        border: 1px solid #dbe4ef;
+        background: #fff;
+        box-shadow: 0 8px 20px rgba(15,23,42,.12);
+      }
+
+      html.low-resource .modal {
+        border: 1px solid #dbe4ef;
+        background: #fff;
+        color: #0f172a;
+        box-shadow: none;
+      }
+
+      html.low-resource .modal-backdrop {
+        background: rgba(15, 23, 42, .34);
+        backdrop-filter: none !important;
+      }
+
+      html.low-resource .toast {
+        border: 1px solid #dbe4ef;
+        background: #fff;
+        color: #0f172a;
+        box-shadow: 0 8px 18px rgba(15,23,42,.16);
+        backdrop-filter: none;
+      }
+    }
   </style>
 </head>
 <body>
