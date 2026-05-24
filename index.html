@@ -2,14 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#090B1A" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="application-name" content="RealYou Chat" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="theme-color" content="#1682e6" />
   <title>RealYou Chat</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./realyou-chat-app-icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./realyou-chat-app-icon-180.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="preconnect" href="https://lkebqdjckemakpmqegsp.supabase.co" crossorigin />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const ua = navigator.userAgent || '';
+      const android = /Android/i.test(ua);
+      const webView = /; wv\)|Version\/\d+.*Chrome\/\d+.*Mobile Safari/i.test(ua);
+      const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches || navigator.standalone === true;
+      const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
+      const slowNetwork = /(^slow-2g$|^2g$|^3g$)/i.test(connection.effectiveType || '');
+      const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 3;
+      const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
+      if (android) root.classList.add('android-runtime');
+      if (android && (webView || standalone || slowNetwork || lowMemory || lowCpu)) root.classList.add('android-apk', 'low-resource');
+    })();
+  </script>
   <style>
     :root {
       color-scheme: dark;
@@ -4025,6 +4046,92 @@
         white-space: nowrap;
       }
     }
+
+
+    /* Android APK performance layer: trims expensive paint, keeps touch targets large, and prevents viewport jumps. */
+    html.android-runtime, html.android-runtime body {
+      width: 100%;
+      min-height: 100%;
+      overscroll-behavior: none;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeSpeed;
+      touch-action: manipulation;
+    }
+
+    html.android-apk body::before,
+    html.android-apk .brand-panel::after {
+      display: none !important;
+    }
+
+    html.android-apk .app-shell,
+    html.android-apk .auth-card,
+    html.android-apk .modal,
+    html.android-apk .toast,
+    html.android-apk .message-bubble,
+    html.android-apk .conversation-item,
+    html.android-apk .telegram-drawer,
+    html.android-apk .composer,
+    html.android-apk .chat-header {
+      backdrop-filter: none !important;
+      filter: none !important;
+      box-shadow: none !important;
+    }
+
+    html.android-apk .conversation-list,
+    html.android-apk .messages,
+    html.android-apk .modal {
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: auto !important;
+    }
+
+    html.android-apk .message-row,
+    html.android-apk .conversation-item,
+    html.android-apk .person-row,
+    html.android-apk .media-message {
+      content-visibility: auto;
+      contain: layout paint style;
+    }
+
+    html.android-apk .media-image,
+    html.android-apk .media-video,
+    html.android-apk .sticker-image {
+      transform: translateZ(0);
+      backface-visibility: hidden;
+    }
+
+    @media (max-width: 760px) {
+      html.android-apk #appScreen.app-shell {
+        height: 100svh;
+        min-height: 100svh;
+      }
+
+      @supports (height: 100dvh) {
+        html.android-apk #appScreen.app-shell {
+          height: 100dvh;
+          min-height: 100dvh;
+        }
+      }
+
+      html.android-apk .chat-main {
+        min-height: 0;
+      }
+
+      html.android-apk #appScreen .messages {
+        will-change: scroll-position;
+      }
+
+      html.android-apk #appScreen .composer {
+        padding-bottom: max(6px, env(safe-area-inset-bottom));
+      }
+
+      html.android-apk input,
+      html.android-apk textarea,
+      html.android-apk select,
+      html.android-apk button {
+        font-size: 16px;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -4840,20 +4947,20 @@
     };
     const MESSAGE_PAGE_SIZE = 50;
     const MOBILE_MESSAGE_PAGE_SIZE = 35;
-    const LITE_MESSAGE_PAGE_SIZE = 24;
-    const LITE_CONVERSATION_RENDER_LIMIT = 80;
-    const MAX_RENDERED_MESSAGES = 260;
-    const MESSAGE_CACHE_LIMIT = 80;
+    const LITE_MESSAGE_PAGE_SIZE = 18;
+    const LITE_CONVERSATION_RENDER_LIMIT = 60;
+    const MAX_RENDERED_MESSAGES = 150;
+    const MESSAGE_CACHE_LIMIT = 45;
     const MESSAGE_LOAD_TIMEOUT_MS = 9000;
     const MOBILE_MESSAGE_LOAD_TIMEOUT_MS = 6000;
-    const LITE_MESSAGE_LOAD_TIMEOUT_MS = 10000;
+    const LITE_MESSAGE_LOAD_TIMEOUT_MS = 7500;
     const CONVERSATION_LOAD_TIMEOUT_MS = 10000;
     const MOBILE_CONVERSATION_LOAD_TIMEOUT_MS = 7000;
-    const LITE_CONVERSATION_LOAD_TIMEOUT_MS = 10000;
+    const LITE_CONVERSATION_LOAD_TIMEOUT_MS = 7500;
     const PRESENCE_HEARTBEAT_MS = 45000;
-    const LITE_PRESENCE_HEARTBEAT_MS = 110000;
+    const LITE_PRESENCE_HEARTBEAT_MS = 180000;
     const PRESENCE_IDLE_MS = 90000;
-    const LITE_PRESENCE_IDLE_MS = 180000;
+    const LITE_PRESENCE_IDLE_MS = 300000;
     const SEARCH_CACHE_MS = 60000;
     const MOBILE_FAST_TAP_WINDOW_MS = 700;
     const ACCOUNT_DELETE_STORAGE_GRACE_MS = 900;
@@ -4874,7 +4981,7 @@
       audio: 16 * 1024 * 1024,
       document: 25 * 1024 * 1024
     };
-    const MAX_OFFLINE_MEDIA_BYTES = 8 * 1024 * 1024;
+    const MAX_OFFLINE_MEDIA_BYTES = 4 * 1024 * 1024;
     const ALLOWED_UPLOAD_MIME = {
       image: /^image\/(png|jpe?g|webp|gif)$/i,
       sticker: /^image\/(png|webp|gif)$/i,
@@ -5740,12 +5847,22 @@
       if (!state.user) return;
       const requestUserId = state.user.id;
       let response;
+      const useLiteRpc = shouldUseLiteRuntime();
       try {
         response = await withTimeout(
-          sb.rpc('get_my_conversations'),
+          useLiteRpc
+            ? sb.rpc('get_my_conversations_lite', { max_conversations: LITE_CONVERSATION_RENDER_LIMIT })
+            : sb.rpc('get_my_conversations'),
           conversationLoadTimeout(),
           'Conversation refresh timed out.'
         );
+        if (useLiteRpc && response?.error && /get_my_conversations_lite|function|schema cache/i.test(response.error.message || '')) {
+          response = await withTimeout(
+            sb.rpc('get_my_conversations'),
+            conversationLoadTimeout(),
+            'Conversation refresh timed out.'
+          );
+        }
       } catch (error) {
         scheduleConversationRender();
         return;
@@ -5979,7 +6096,7 @@
       const effectiveType = String(connection?.effectiveType || '').toLowerCase();
       const saveData = Boolean(connection?.saveData);
       const slowNetwork = /(^slow-2g$|^2g$|^3g$)/.test(effectiveType);
-      const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 2;
+      const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 3;
       const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
       const narrowMobile = isMobileLayout() && Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 430;
       return isAndroidRuntime() || saveData || slowNetwork || (isMobileLayout() && (lowMemory || lowCpu || narrowMobile));
@@ -7396,12 +7513,12 @@
       }
 
       if (type === 'video' && message.media_url) {
-        return `<div class="media-message"><video class="media-video" src="${url}" controls playsinline></video>${caption}</div>`;
+        return `<div class="media-message"><video class="media-video" src="${url}" controls playsinline preload="metadata"></video>${caption}</div>`;
       }
 
       if (type === 'audio' && message.media_url) {
         const transcript = meta.transcript ? `<div class="reply-card">${escapeHtml(meta.transcript)}</div>` : '';
-        return `<div class="media-message"><audio class="media-audio" src="${url}" controls></audio><button class="btn" type="button" data-audio-speed>1x</button>${transcript}${caption}</div>`;
+        return `<div class="media-message"><audio class="media-audio" src="${url}" controls preload="none"></audio><button class="btn" type="button" data-audio-speed>1x</button>${transcript}${caption}</div>`;
       }
 
       if (type === 'document' && message.media_url) {
@@ -9496,7 +9613,11 @@
 
     function validateUploadFile(file, messageType, options = {}) {
       const type = messageType || messageTypeForFile(file);
-      const max = options.offline ? Math.min(MAX_UPLOAD_BYTES[type] || MAX_UPLOAD_BYTES.document, MAX_OFFLINE_MEDIA_BYTES) : (MAX_UPLOAD_BYTES[type] || MAX_UPLOAD_BYTES.document);
+      const baseMax = MAX_UPLOAD_BYTES[type] || MAX_UPLOAD_BYTES.document;
+      const liteMax = shouldUseLiteRuntime()
+        ? ({ image: 3 * 1024 * 1024, sticker: 1536 * 1024, video: 24 * 1024 * 1024, audio: 8 * 1024 * 1024, document: 12 * 1024 * 1024 }[type] || baseMax)
+        : baseMax;
+      const max = options.offline ? Math.min(baseMax, liteMax, MAX_OFFLINE_MEDIA_BYTES) : Math.min(baseMax, liteMax);
       if (file.size > max) throw new Error(`${typeLabel(type)} must be ${formatBytes(max)} or smaller.`);
       const mime = file.type || mimeFromFileName(file.name);
       const allowed = ALLOWED_UPLOAD_MIME[type] || ALLOWED_UPLOAD_MIME.document;
@@ -9538,10 +9659,10 @@
     async function prepareFileForUpload(file, messageType) {
       if (!['image', 'sticker'].includes(messageType)) return file;
       const lite = shouldUseLiteRuntime();
-      if (file.type === 'image/gif' || (!lite && file.size < 1400 * 1024) || (lite && file.size < 700 * 1024)) return file;
+      if (file.type === 'image/gif' || (!lite && file.size < 1400 * 1024) || (lite && file.size < 450 * 1024)) return file;
       return withTimeout(
-        compressImageFile(file, messageType === 'sticker' ? 512 : (lite ? 1280 : 1600), messageType === 'sticker' ? .82 : (lite ? .68 : .78), {
-          force: lite && file.size > 700 * 1024,
+        compressImageFile(file, messageType === 'sticker' ? 420 : (lite ? 960 : 1600), messageType === 'sticker' ? .76 : (lite ? .62 : .78), {
+          force: lite && file.size > 450 * 1024,
           outputType: 'image/jpeg'
         }),
         IMAGE_PROCESS_TIMEOUT_MS,
@@ -10164,7 +10285,9 @@
     function installPwaAssets() {
       if ('serviceWorker' in navigator && location.protocol !== 'file:') {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+          navigator.serviceWorker.register('./sw.js', { scope: './' }).then((registration) => {
+            if (registration.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }).catch(() => {});
         }, { once: true });
         navigator.serviceWorker.addEventListener('message', (event) => {
           if (event.data?.type !== 'notification-click') return;

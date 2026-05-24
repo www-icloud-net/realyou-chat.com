@@ -1,13 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#25D366"/>
-      <stop offset=".52" stop-color="#1D9BF0"/>
-      <stop offset="1" stop-color="#6C5CE7"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="18" fill="url(#g)"/>
-  <path d="M18 20.5A10.5 10.5 0 0 1 28.5 10h7A10.5 10.5 0 0 1 46 20.5v10A10.5 10.5 0 0 1 35.5 41H31l-10 8v-9.5A10.5 10.5 0 0 1 18 31V20.5Z" fill="white" opacity=".96"/>
-  <path d="M25 23h15M25 29h11" stroke="#0B141A" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="44" cy="44" r="9" fill="#25D366" stroke="white" stroke-width="4"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="RealYou Chat"><defs><linearGradient id="g" x1="48" y1="48" x2="464" y2="464"><stop stop-color="#22c55e"/><stop offset="0.48" stop-color="#0ea5e9"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs><rect width="512" height="512" rx="116" fill="url(#g)"/><path d="M168 150h176a74 74 0 0 1 74 74v46a74 74 0 0 1-74 74H245l-77 70v-76a74 74 0 0 1-74-74v-40a74 74 0 0 1 74-74Z" fill="#f8fafc"/><rect x="177" y="215" width="158" height="32" rx="16" fill="#020617"/><rect x="177" y="274" width="124" height="32" rx="16" fill="#020617"/><circle cx="355" cy="355" r="78" fill="#fff"/><circle cx="355" cy="355" r="50" fill="#22c55e"/></svg>
